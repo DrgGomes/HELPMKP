@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import type { Produto, Plataforma } from '../types';
 
 interface DashboardProps {
