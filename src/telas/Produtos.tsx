@@ -150,7 +150,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     if (window.confirm("Excluir este produto?")) {
       const userId = auth.currentUser?.uid;
       if (!userId) return;
-      await deleteDoc(docRef(db, 'usuarios', userId, 'produtos', id));
+      // CORREÇÃO 1 APLICADA: Mudamos docRef para doc
+      await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
     }
   };
 
@@ -352,7 +353,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                     <h4 className="font-black text-slate-800 text-lg leading-tight mb-2 truncate" title={prod.titulo}>{prod.titulo}</h4>
                     <div className="flex flex-wrap gap-2 text-xs">
                       <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-bold">Custo: R$ {prod.custoTotal.toFixed(2)}</span>
-                      {prod.custoAds > 0 && <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold">Ads: R$ {prod.custoAds.toFixed(2)}</span>}
+                      {/* CORREÇÃO 2 APLICADA: Tratamento do undefined no Ads */}
+                      {(prod.custoAds || 0) > 0 && <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold">Ads: R$ {(prod.custoAds || 0).toFixed(2)}</span>}
                       <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-md font-black">Meta: {prod.tipoLucro === 'reais' ? `R$ ${prod.valorLucro.toFixed(2)}` : `${prod.valorLucro}%`}</span>
                     </div>
                   </div>
