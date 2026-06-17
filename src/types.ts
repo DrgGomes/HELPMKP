@@ -1,4 +1,3 @@
-// src/types.ts
 export interface Plataforma {
   id: string;
   nome: string;
@@ -7,16 +6,26 @@ export interface Plataforma {
   taxaFixa: number;
   freteFixo: number;
   logo: string;
+  cor?: string;
+  textoCor?: string;
+}
+
+export interface CustoAdicional {
+  id: string;
+  nome: string;
+  valor: number;
 }
 
 export interface Produto {
   id: string;
-  nome: string;
-  precoCusto: number;
-  categoria: string; // Nova categoria
-  plataformaId: string;
-  precoVenda: number;
-  custoAds?: number; // Simulador de Ads
+  foto: string;
+  titulo: string;
+  categoria?: string;
+  custoAds?: number;
+  custoBase: number;
+  custosAdicionais: CustoAdicional[];
+  custoTotal: number;
+  tipoLucro: 'porcentagem' | 'reais';
+  valorLucro: number;
   isKit?: boolean;
-  produtosKit?: string[]; // IDs dos produtos que compõem o kit
 }
