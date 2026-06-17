@@ -8,7 +8,7 @@ interface ProdutosProps {
   setTelaAtiva: (tela: string) => void;
   produtos: Produto[];
   plataformas: Plataforma[];
-  custosPadrao: CustoPadrao[]; // RECEBENDO DO APP.TSX
+  custosPadrao: CustoPadrao[];
 }
 
 const CATEGORIAS_PADRAO = ['Calçados', 'Auto Peças', 'Vestuário', 'Eletrônicos', 'Casa e Decoração', 'Acessórios', 'Kits', 'Outros'];
@@ -54,7 +54,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     e.preventDefault();
     if (!tituloProd || !custoBaseProd || !valorLucro) return;
 
-    const userId = auth.currentUser?.uid;
+    // BLINDAGEM 1: Garantindo que o userId é uma string absoluta
+    const userId = auth.currentUser?.uid as string;
     if (!userId) return;
 
     const baseFormatada = parseFloat(custoBaseProd);
@@ -78,7 +79,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
 
     try {
       if (idProdEdicao) {
-        await setDoc(doc(db, 'usuarios', userId, 'produtos', idProdEdicao), dadosProduto);
+        // Garantindo que idProdEdicao também é interpretado como string
+        await setDoc(doc(db, 'usuarios', userId, 'produtos', idProdEdicao as string), dadosProduto);
       } else {
         await addDoc(collection(db, 'usuarios', userId, 'produtos'), dadosProduto);
       }
@@ -104,7 +106,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   };
 
   const duplicarProduto = async (prod: Produto) => {
-    const userId = auth.currentUser?.uid;
+    // BLINDAGEM 2
+    const userId = auth.currentUser?.uid as string;
     if (!userId) return;
     const { id, ...dadosSemId } = prod;
     await addDoc(collection(db, 'usuarios', userId, 'produtos'), { ...dadosSemId, titulo: `${prod.titulo} (Cópia)` });
@@ -117,8 +120,10 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
 
   const lidarExcluirProduto = async (id: string) => {
     if (window.confirm("Excluir este produto?")) {
-      const userId = auth.currentUser?.uid;
-      if (!userId) await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
+      // BLINDAGEM 3
+      const userId = auth.currentUser?.uid as string;
+      if (!userId) return;
+      await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
     }
   };
 
@@ -182,7 +187,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                   <button type="button" onClick={adicionarCustoExtra} className="text-sm bg-blue-100 text-blue-700 px-4 py-2 rounded-xl font-bold hover:bg-blue-200 shadow-sm">+ Custo Manual</button>
                 </div>
                 
-                {/* A MÁGICA ACONTECE AQUI: PUXANDO DO BANCO DE DADOS */}
                 <div className="flex flex-wrap gap-2 mb-5">
                   {custosPadrao.length === 0 ? (
                     <span className="text-xs text-slate-400 italic">Cadastre atalhos no menu "Custos Variáveis"</span>
