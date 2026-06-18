@@ -1,5 +1,5 @@
-import React, { useState, useRef } from 'react';
-import { doc, setDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
+import React, { useState } from 'react';
+import { doc, setDoc, addDoc, collection, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { Plataforma } from '../types';
 
@@ -7,528 +7,228 @@ interface ConfiguracoesProps {
   plataformas: Plataforma[];
 }
 
-// Catálogo de plataformas padrão baseado nas regras de mercado
-const PLATAFORMAS_PADRAO = [
-  {
-    id_template: 'ml_premium',
-    nome: 'Mercado Livre (Premium)',
-    comissao: 16, // Média da categoria
-    comissaoAfiliado: 0,
-    taxaFixa: 6.0, // Taxa média para < R$79
-    freteFixo: 0,
-    logo: 'https://logo.clearbit.com/mercadolivre.com.br',
-    cor: 'bg-yellow-400',
-    textoCor: 'text-yellow-900',
-  },
-  {
-    id_template: 'ml_classico',
-    nome: 'Mercado Livre (Clássico)',
-    comissao: 12,
-    comissaoAfiliado: 0,
-    taxaFixa: 6.0,
-    freteFixo: 0,
-    logo: 'https://logo.clearbit.com/mercadolivre.com.br',
-    cor: 'bg-yellow-100',
-    textoCor: 'text-yellow-800',
-  },
-  {
-    id_template: 'shopee_padrao',
-    nome: 'Shopee (Frete Grátis)',
-    comissao: 20,
-    comissaoAfiliado: 0,
-    taxaFixa: 3.0,
-    freteFixo: 0,
-    logo: 'https://logo.clearbit.com/shopee.com.br',
-    cor: 'bg-orange-500',
-    textoCor: 'text-white',
-  },
-  {
-    id_template: 'tiktok_shop',
-    nome: 'TikTok Shop (< R$50)',
-    comissao: 10,
-    comissaoAfiliado: 0,
-    taxaFixa: 4.0, // Ajustar para R$ 6.00 se o produto for > R$50
-    freteFixo: 0,
-    logo: 'https://logo.clearbit.com/tiktok.com',
-    cor: 'bg-black',
-    textoCor: 'text-white',
-  },
-  {
-    id_template: 'kwai_shop',
-    nome: 'Kwai Shop',
-    comissao: 20,
-    comissaoAfiliado: 0,
-    taxaFixa: 4.0, // Ajustar se o produto for < R$8,00
-    freteFixo: 0,
-    logo: 'https://ui-avatars.com/api/?name=Kwai&background=ff7a00&color=fff',
-    cor: 'bg-orange-600',
-    textoCor: 'text-white',
-  },
-];
-
 export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
-  // Referência para o carrossel para podermos rolar via botões
-  const carrosselRef = useRef<HTMLDivElement>(null);
+  const [idEdicao, setIdEdicao] = useState<string | null>(null);
+  const [nome, setNome] = useState('');
+  const [comissao, setComissao] = useState('');
+  const [comissaoAfiliado, setComissaoAfiliado] = useState('0');
+  const [taxaFixa, setTaxaFixa] = useState('');
+  const [freteFixo, setFreteFixo] = useState('');
+  const [logo, setLogo] = useState('');
 
-  const [idPlatEdicao, setIdPlatEdicao] = useState<string | null>(null);
-  const [nomePlat, setNomePlat] = useState('');
-  const [comissaoPlat, setComissaoPlat] = useState('');
-  const [comissaoAfilPlat, setComissaoAfilPlat] = useState('');
-  const [taxaFixaPlat, setTaxaFixaPlat] = useState('');
-  const [freteFixoPlat, setFreteFixoPlat] = useState('');
-  const [logoPlat, setLogoPlat] = useState('');
-  const [adicionandoId, setAdicionandoId] = useState<string | null>(null);
+  // Estados do Backup
+  const [fazendoBackup, setFazendoBackup] = useState(false);
+  const [restaurando, setRestaurando] = useState(false);
 
-  // Funções para rolar o carrossel
-  const rolarEsquerda = () => {
-    if (carrosselRef.current) {
-      carrosselRef.current.scrollBy({ left: -300, behavior: 'smooth' });
-    }
-  };
-
-  const rolarDireita = () => {
-    if (carrosselRef.current) {
-      carrosselRef.current.scrollBy({ left: 300, behavior: 'smooth' });
-    }
-  };
-
-  const lidarAdicionarPadrao = async (
-    platTemplate: (typeof PLATAFORMAS_PADRAO)[0]
-  ) => {
-    const userId = auth.currentUser?.uid;
-    if (!userId) return;
-
-    setAdicionandoId(platTemplate.id_template);
-
-    try {
-      const colRef = collection(db, 'usuarios', userId, 'plataformas');
-      await addDoc(colRef, {
-        nome: platTemplate.nome,
-        comissao: platTemplate.comissao,
-        comissaoAfiliado: platTemplate.comissaoAfiliado,
-        taxaFixa: platTemplate.taxaFixa,
-        freteFixo: platTemplate.freteFixo,
-        logo: platTemplate.logo,
-      });
-    } catch (error) {
-      console.error('Erro ao adicionar plataforma padrão:', error);
-    } finally {
-      setAdicionandoId(null);
-    }
-  };
-
-  const lidarSalvarPlataforma = async (e: React.FormEvent) => {
+  // --- LÓGICA DE MARKETPLACES ---
+  const lidarSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomePlat || !comissaoPlat) return;
+    if (!nome) return;
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
 
-    const userId = auth.currentUser?.uid;
-    if (!userId) return;
-
-    const logoFinal =
-      logoPlat.trim() !== ''
-        ? logoPlat
-        : `https://ui-avatars.com/api/?name=${encodeURIComponent(
-            nomePlat
-          )}&background=random&color=fff`;
-
-    const dadosAtualizados = {
-      nome: nomePlat,
-      comissao: parseFloat(comissaoPlat),
-      comissaoAfiliado: comissaoAfilPlat ? parseFloat(comissaoAfilPlat) : 0,
-      taxaFixa: taxaFixaPlat ? parseFloat(taxaFixaPlat) : 0,
-      freteFixo: freteFixoPlat ? parseFloat(freteFixoPlat) : 0,
-      logo: logoFinal,
+    const dados = {
+      nome, logo: logo || `https://ui-avatars.com/api/?name=${nome}&background=random`,
+      comissao: parseFloat(comissao) || 0, comissaoAfiliado: parseFloat(comissaoAfiliado) || 0,
+      taxaFixa: parseFloat(taxaFixa) || 0, freteFixo: parseFloat(freteFixo) || 0
     };
 
     try {
-      if (idPlatEdicao) {
-        const docRef = doc(db, 'usuarios', userId, 'plataformas', idPlatEdicao);
-        await setDoc(docRef, dadosAtualizados);
-      } else {
-        const colRef = collection(db, 'usuarios', userId, 'plataformas');
-        await addDoc(colRef, dadosAtualizados);
-      }
-      limparFormPlataforma();
-    } catch (error) {
-      console.error('Erro ao salvar plataforma:', error);
-    }
+      if (idEdicao) await setDoc(doc(db, 'usuarios', userId, 'plataformas', idEdicao), dados);
+      else await addDoc(collection(db, 'usuarios', userId, 'plataformas'), dados);
+      limparFormulario();
+    } catch (error) { console.error(error); }
   };
 
-  const iniciarEdicaoPlataforma = (plat: Plataforma) => {
-    setIdPlatEdicao(plat.id);
-    setNomePlat(plat.nome);
-    setComissaoPlat(plat.comissao.toString());
-    setComissaoAfilPlat(plat.comissaoAfiliado.toString());
-    setTaxaFixaPlat(plat.taxaFixa.toString());
-    setFreteFixoPlat(plat.freteFixo.toString());
-    setLogoPlat(plat.logo.includes('ui-avatars') ? '' : plat.logo);
+  const iniciarEdicao = (plat: Plataforma) => {
+    setIdEdicao(plat.id); setNome(plat.nome); setLogo(plat.logo);
+    setComissao(plat.comissao.toString()); setComissaoAfiliado(plat.comissaoAfiliado.toString());
+    setTaxaFixa(plat.taxaFixa.toString()); setFreteFixo(plat.freteFixo.toString());
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const limparFormPlataforma = () => {
-    setIdPlatEdicao(null);
-    setNomePlat('');
-    setComissaoPlat('');
-    setComissaoAfilPlat('');
-    setTaxaFixaPlat('');
-    setFreteFixoPlat('');
-    setLogoPlat('');
+  const limparFormulario = () => {
+    setIdEdicao(null); setNome(''); setLogo(''); setComissao('');
+    setComissaoAfiliado('0'); setTaxaFixa(''); setFreteFixo('');
   };
 
-  const lidarExcluirPlataforma = async (id: string) => {
-    if (
-      window.confirm(
-        'Tem certeza que deseja excluir esta plataforma? Seus produtos vinculados a ela perderão este cálculo.'
-      )
-    ) {
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
-      try {
-        const docRef = doc(db, 'usuarios', userId, 'plataformas', id);
-        await deleteDoc(docRef);
-      } catch (error) {
-        console.error('Erro ao excluir plataforma:', error);
+  const excluirPlataforma = async (id: string) => {
+    const userId = auth.currentUser?.uid as string;
+    if (userId && window.confirm("Excluir esta plataforma?")) await deleteDoc(doc(db, 'usuarios', userId, 'plataformas', id));
+  };
+
+  // --- O COFRE DE DADOS: GERAR BACKUP (EXPORTAR) ---
+  const gerarBackup = async () => {
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    setFazendoBackup(true);
+    try {
+      const colecoes = ['plataformas', 'produtos', 'custos_padrao', 'categorias', 'fornecedores', 'lancamentos', 'compras'];
+      const dadosBackup: Record<string, any[]> = {};
+
+      for (const nomeCol of colecoes) {
+        const snapshot = await getDocs(collection(db, 'usuarios', userId, nomeCol));
+        dadosBackup[nomeCol] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       }
+
+      const backupFinal = { timestamp: new Date().toISOString(), dados: dadosBackup };
+      
+      // Cria o arquivo JSON e força o download
+      const blob = new Blob([JSON.stringify(backupFinal, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `COFRE_HELPMKP_${new Date().toISOString().split('T')[0]}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+    } catch (error) {
+      console.error(error); alert("Erro ao gerar o backup.");
+    }
+    setFazendoBackup(false);
+  };
+
+  // --- O COFRE DE DADOS: RESTAURAR BACKUP (IMPORTAR) ---
+  const restaurarBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!window.confirm("⚠️ ALERTA VERMELHO: Isso vai SOBRESCREVER o seu banco de dados atual com as informações do arquivo. Tem certeza absoluta?")) {
+      event.target.value = ''; return;
+    }
+
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    setRestaurando(true);
+
+    try {
+      const leitor = new FileReader();
+      leitor.onload = async (e) => {
+        try {
+          const conteudo = e.target?.result as string;
+          const backupRestaurado = JSON.parse(conteudo);
+
+          if (!backupRestaurado.dados) throw new Error("Arquivo de backup inválido.");
+
+          // O Firebase recomenda enviar em Lotes (Batches) para não travar
+          const batch = writeBatch(db);
+          let operacoes = 0;
+
+          for (const [nomeCol, itens] of Object.entries(backupRestaurado.dados)) {
+            const arrItens = itens as any[];
+            for (const item of arrItens) {
+              const docRef = doc(db, 'usuarios', userId, nomeCol, item.id);
+              batch.set(docRef, item);
+              operacoes++;
+            }
+          }
+
+          if (operacoes > 0) {
+            await batch.commit();
+            alert(`✅ Restauração Concluída! ${operacoes} registros foram salvos no sistema. Recarregue a página.`);
+            window.location.reload();
+          } else {
+            alert("O arquivo de backup estava vazio.");
+          }
+        } catch (err) {
+          console.error(err); alert("Erro ao ler o arquivo. Tem certeza que é um backup do HelpMkp?");
+        }
+        setRestaurando(false);
+      };
+      leitor.readAsText(file);
+    } catch (error) {
+      console.error(error); alert("Erro catastrófico ao restaurar."); setRestaurando(false);
     }
   };
 
   return (
-    <div className="animate-fade-in">
-      <header className="mb-8 md:mb-10">
-        <h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">
-          Taxas das Plataformas
-        </h2>
-        <p className="text-slate-500 mt-1 text-sm md:text-base">
-          Configure os custos cobrados por cada marketplace para precificação
-          precisa.
-        </p>
+    <div className="animate-fade-in max-w-6xl mx-auto space-y-8">
+      <header>
+        <h2 className="text-3xl font-black text-slate-800 flex items-center gap-2"><span>⚙️</span> Ajustes Globais & Cofre</h2>
+        <p className="text-slate-500 mt-1">Configure suas taxas de venda e proteja os dados do seu sistema.</p>
       </header>
 
-      {/* VITRINE DE PLATAFORMAS PADRÃO (1 CLIQUE) */}
-      <div className="mb-10">
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xl">⚡</span>
-          <h3 className="text-lg font-bold text-slate-800">
-            Adicionar com 1 Clique
-          </h3>
+      {/* --- MÓDULO DO COFRE DE DADOS (NOVO) --- */}
+      <div className="bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-800 text-white flex flex-col lg:flex-row gap-8 items-center justify-between">
+        <div className="lg:w-1/2">
+          <h3 className="text-2xl font-black text-emerald-400 mb-2 flex items-center gap-2"><span>🛡️</span> Cofre de Dados (Backup)</h3>
+          <p className="text-slate-400 text-sm leading-relaxed mb-4">
+            Baixe uma cópia completa de segurança de <strong>todos</strong> os seus produtos, finanças, compras e fornecedores. Faça isso no final do dia ou antes de testar alterações grandes.
+          </p>
+          <button 
+            onClick={gerarBackup} 
+            disabled={fazendoBackup}
+            className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-slate-900 font-black rounded-xl transition-all shadow-lg shadow-emerald-600/30 disabled:opacity-50"
+          >
+            {fazendoBackup ? 'Empacotando Cofre...' : '💾 Baixar Cópia de Segurança (.json)'}
+          </button>
         </div>
+        
+        <div className="w-px h-32 bg-slate-800 hidden lg:block"></div>
 
-        {/* Container Relativo para segurar os botões flutuantes */}
-        <div className="relative group">
-          {/* Botão Esquerda */}
-          <button
-            onClick={rolarEsquerda}
-            className="absolute left-0 top-1/2 -translate-y-1/2 -ml-5 z-10 bg-white border border-slate-200 shadow-lg rounded-full w-12 h-12 items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all hidden md:flex cursor-pointer"
-            aria-label="Rolar para a esquerda"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2.5"
-                d="M15 19l-7-7 7-7"
-              />
-            </svg>
-          </button>
-
-          {/* Carrossel Scrollável */}
-          <div
-            ref={carrosselRef}
-            className="flex overflow-x-auto pb-4 gap-4 snap-x hide-scrollbar"
-          >
-            {PLATAFORMAS_PADRAO.map((plat) => (
-              <div
-                key={plat.id_template}
-                className="min-w-[260px] max-w-[260px] bg-white border border-slate-200 rounded-2xl p-5 shadow-sm snap-start flex flex-col hover:shadow-md transition-shadow"
-              >
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-inner overflow-hidden ${plat.cor}`}
-                  >
-                    <img
-                      src={plat.logo}
-                      alt={plat.nome}
-                      className="w-full h-full object-cover opacity-90"
-                      onError={(e) => (e.currentTarget.style.display = 'none')}
-                    />
-                  </div>
-                  <h4 className="font-bold text-slate-800 text-sm leading-tight">
-                    {plat.nome}
-                  </h4>
-                </div>
-                <div className="space-y-1 mb-5 flex-1">
-                  <p className="text-xs text-slate-500 flex justify-between">
-                    <span>Comissão:</span>{' '}
-                    <strong className="text-slate-700">{plat.comissao}%</strong>
-                  </p>
-                  <p className="text-xs text-slate-500 flex justify-between">
-                    <span>Taxa Fixa:</span>{' '}
-                    <strong className="text-slate-700">
-                      R$ {plat.taxaFixa.toFixed(2)}
-                    </strong>
-                  </p>
-                </div>
-                <button
-                  onClick={() => lidarAdicionarPadrao(plat)}
-                  disabled={adicionandoId === plat.id_template}
-                  className="w-full py-2.5 bg-slate-50 hover:bg-blue-50 text-blue-600 border border-slate-200 hover:border-blue-200 rounded-xl text-sm font-bold transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {adicionandoId === plat.id_template ? (
-                    <span className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-blue-600 border-t-transparent"></span>
-                  ) : (
-                    <>
-                      <span>➕</span> Adicionar
-                    </>
-                  )}
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {/* Botão Direita */}
-          <button
-            onClick={rolarDireita}
-            className="absolute right-0 top-1/2 -translate-y-1/2 -mr-5 z-10 bg-white border border-slate-200 shadow-lg rounded-full w-12 h-12 items-center justify-center text-slate-600 hover:text-blue-600 hover:border-blue-300 opacity-0 group-hover:opacity-100 transition-all hidden md:flex cursor-pointer"
-            aria-label="Rolar para a direita"
-          >
-            <svg
-              className="w-6 h-6"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2.5"
-                d="M9 5l7 7-7 7"
-              />
-            </svg>
-          </button>
+        <div className="lg:w-1/2 bg-slate-950 p-6 rounded-2xl border border-rose-900/30 relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-2 h-full bg-rose-600"></div>
+          <h4 className="font-bold text-rose-500 mb-2 uppercase tracking-widest text-xs">Zona de Risco - Restaurar</h4>
+          <p className="text-slate-500 text-xs mb-4">Subir um arquivo de backup irá sobrescrever as informações atuais do sistema. Use com extrema cautela.</p>
+          
+          <label className={`block text-center px-6 py-3 border-2 border-dashed border-slate-700 hover:border-rose-500 rounded-xl cursor-pointer transition-colors ${restaurando ? 'opacity-50 pointer-events-none' : ''}`}>
+            <span className="font-bold text-slate-300">{restaurando ? 'Restaurando o sistema...' : '📂 Clique para Subir Arquivo de Backup'}</span>
+            <input type="file" accept=".json" onChange={restaurarBackup} className="hidden" disabled={restaurando} />
+          </label>
         </div>
       </div>
 
-      <div className="flex flex-col xl:flex-row gap-6 md:gap-8">
-        {/* FORMULÁRIO CUSTOMIZADO */}
-        <div className="xl:w-1/3 bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 h-fit">
-          <h3 className="text-lg font-bold text-slate-800 mb-5 pb-3 border-b border-slate-100 flex items-center gap-2">
-            <span>⚙️</span>{' '}
-            {idPlatEdicao ? 'Editar Plataforma' : 'Criar Personalizada'}
-          </h3>
-          <form onSubmit={lidarSalvarPlataforma} className="space-y-5">
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                Nome do Marketplace
-              </label>
-              <input
-                type="text"
-                required
-                placeholder="Ex: Mercado Livre Shoes"
-                value={nomePlat}
-                onChange={(e) => setNomePlat(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Comissão (%)
-                </label>
-                <input
-                  type="number"
-                  required
-                  step="0.01"
-                  placeholder="0.00"
-                  value={comissaoPlat}
-                  onChange={(e) => setComissaoPlat(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+      {/* --- MÓDULO DE PLATAFORMAS (MARKETPLACES) --- */}
+      <div className="pt-4 border-t border-slate-200">
+        <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><span>🛍️</span> Canais de Venda (Marketplaces)</h3>
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
+            <h3 className="font-bold text-slate-800 mb-4">{idEdicao ? 'Editar' : 'Nova'} Plataforma</h3>
+            <form onSubmit={lidarSalvar} className="space-y-4">
+              <input type="text" required placeholder="Nome (Ex: Mercado Livre)" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none" />
+              <input type="url" placeholder="URL da Logo (Opcional)" value={logo} onChange={(e) => setLogo(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none text-xs" />
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Comissão Base (%)</label><input type="number" step="0.01" value={comissao} onChange={(e) => setComissao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none" /></div>
+                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Comissão Afiliado (%)</label><input type="number" step="0.01" value={comissaoAfiliado} onChange={(e) => setComissaoAfiliado(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none text-blue-600" /></div>
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Afiliado (%)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={comissaoAfilPlat}
-                  onChange={(e) => setComissaoAfilPlat(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Taxa Fixa (R$)</label><input type="number" step="0.01" value={taxaFixa} onChange={(e) => setTaxaFixa(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none text-rose-600" /></div>
+                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Frete Fixo (R$)</label><input type="number" step="0.01" value={freteFixo} onChange={(e) => setFreteFixo(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none text-rose-600" /></div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Taxa Fixa (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={taxaFixaPlat}
-                  onChange={(e) => setTaxaFixaPlat(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                />
+              <div className="flex gap-2">
+                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-black shadow-md">{idEdicao ? 'Salvar' : 'Adicionar'}</button>
+                {idEdicao && <button type="button" onClick={limparFormulario} className="px-4 bg-slate-200 text-slate-700 rounded-xl font-bold">Cancelar</button>}
               </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Frete Fixo (R$)
-                </label>
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="0.00"
-                  value={freteFixoPlat}
-                  onChange={(e) => setFreteFixoPlat(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                URL da Logo (Opcional)
-              </label>
-              <input
-                type="url"
-                placeholder="https://..."
-                value={logoPlat}
-                onChange={(e) => setLogoPlat(e.target.value)}
-                className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="submit"
-                className={`flex-1 text-white py-3 rounded-xl text-sm font-bold shadow-sm transition-colors ${
-                  idPlatEdicao
-                    ? 'bg-emerald-600 hover:bg-emerald-700'
-                    : 'bg-blue-600 hover:bg-blue-700'
-                }`}
-              >
-                {idPlatEdicao ? 'Atualizar Dados' : 'Salvar Plataforma'}
-              </button>
-              {idPlatEdicao && (
-                <button
-                  type="button"
-                  onClick={limparFormPlataforma}
-                  className="px-5 py-3 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-sm font-bold transition-colors"
-                >
-                  Cancelar
-                </button>
-              )}
-            </div>
-          </form>
-        </div>
-
-        {/* LISTA DE PLATAFORMAS ATIVAS */}
-        <div className="xl:w-2/3 space-y-4">
-          <div className="flex items-center gap-2 mb-5">
-            <span className="text-xl">✅</span>
-            <h3 className="text-lg font-bold text-slate-800">
-              Suas Plataformas Ativas
-            </h3>
+            </form>
           </div>
 
-          {plataformas.length === 0 ? (
-            <div className="bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center">
-              <p className="text-slate-500">
-                Você ainda não configurou nenhuma plataforma.
-              </p>
-              <p className="text-slate-400 text-sm mt-1">
-                Adicione pelo catálogo rápido acima ou crie uma personalizada.
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {plataformas.map((plat) => (
-                <div
-                  key={plat.id}
-                  className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md transition-shadow relative overflow-hidden group"
-                >
-                  <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                    <button
-                      onClick={() => iniciarEdicaoPlataforma(plat)}
-                      className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"
-                      title="Editar"
-                    >
-                      ✏️
-                    </button>
-                    <button
-                      onClick={() => lidarExcluirPlataforma(plat.id)}
-                      className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition-colors"
-                      title="Excluir"
-                    >
-                      🗑️
-                    </button>
+          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {plataformas.length === 0 ? <div className="sm:col-span-2 lg:col-span-3 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500 font-bold">Nenhum canal de venda cadastrado.</div> : (
+              plataformas.map(plat => (
+                <div key={plat.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group flex flex-col">
+                  <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                    <button onClick={() => iniciarEdicao(plat)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">✏️</button>
+                    <button onClick={() => excluirPlataforma(plat.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100">🗑️</button>
                   </div>
-
-                  <div className="flex items-center gap-4 mb-5 pr-14">
-                    <img
-                      src={plat.logo}
-                      alt=""
-                      className="w-12 h-12 rounded-full border border-slate-100 p-1 object-contain bg-slate-50"
-                      onError={(e) =>
-                        (e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(
-                          plat.nome
-                        )}&background=e2e8f0`)
-                      }
-                    />
-                    <h4 className="font-bold text-slate-800 text-base leading-tight">
-                      {plat.nome}
-                    </h4>
+                  
+                  <div className="flex items-center gap-3 mb-4">
+                    <img src={plat.logo} alt={plat.nome} className="w-10 h-10 rounded-lg border border-slate-100 object-cover" />
+                    <h4 className="font-black text-slate-800 leading-tight truncate">{plat.nome}</h4>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="bg-blue-50/50 p-3 rounded-xl border border-blue-100">
-                      <p className="text-blue-600/70 font-bold uppercase tracking-wider mb-0.5 text-[10px]">
-                        Taxas
-                      </p>
-                      <p className="font-black text-slate-700 text-sm">
-                        {plat.comissao}%{' '}
-                        <span className="text-slate-400 font-medium text-xs">
-                          + {plat.comissaoAfiliado}%
-                        </span>
-                      </p>
-                    </div>
-                    <div className="bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
-                      <p className="text-emerald-600/70 font-bold uppercase tracking-wider mb-0.5 text-[10px]">
-                        Custos Fixos
-                      </p>
-                      <p className="font-black text-slate-700 text-sm">
-                        R$ {plat.taxaFixa.toFixed(2)}{' '}
-                        <span className="text-slate-400 font-medium text-xs">
-                          + frete
-                        </span>
-                      </p>
-                    </div>
+                  
+                  <div className="space-y-2 mt-auto">
+                    <div className="flex justify-between items-center text-xs bg-slate-50 p-2 rounded-lg"><span className="font-bold text-slate-500">Taxa Global</span><span className="font-black text-slate-800">{(plat.comissao + plat.comissaoAfiliado).toFixed(1)}%</span></div>
+                    {(plat.taxaFixa > 0 || plat.freteFixo > 0) && (
+                      <div className="flex justify-between items-center text-xs bg-rose-50 p-2 rounded-lg border border-rose-100"><span className="font-bold text-rose-600">Custos Fixos</span><span className="font-black text-rose-700">+R$ {(plat.taxaFixa + plat.freteFixo).toFixed(2)}</span></div>
+                    )}
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Estilo para esconder a barra de rolagem nativa e manter o visual limpo no carrossel */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .hide-scrollbar::-webkit-scrollbar { display: none; }
-        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-      `,
-        }}
-      />
     </div>
   );
 }
