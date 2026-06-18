@@ -41,7 +41,12 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     else await addDoc(collection(db, 'usuarios', userId, 'fornecedores'), dados);
     setIdFornEdicao(null); setNomeForn(''); setContatoForn(''); setCategoriaForn('');
   };
-  const lidarExcluirFornecedor = async (id: string) => { const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id)); };
+  
+  // AQUI ESTÁ A FUNÇÃO QUE O VERCEL RECLAMOU (Agora ela tem o botão na tela de novo)
+  const lidarExcluirFornecedor = async (id: string) => { 
+    const userId = auth.currentUser?.uid as string; 
+    if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id)); 
+  };
 
   // --- LOGICA DE GERAR ORDEM (ETAPA 1) ---
   const adicionarAoCarrinho = () => {
@@ -62,11 +67,11 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
     
-    const codigoUnico = 'ORD-' + Math.floor(Date.now() / 1000); // Gera um código único
+    const codigoUnico = 'ORD-' + Math.floor(Date.now() / 1000);
 
     const novaOrdem: Omit<Compra, 'id'> = {
       codigoOrdem: codigoUnico,
-      statusChegada: 'aguardando', // FICA AGUARDANDO
+      statusChegada: 'aguardando',
       fornecedorId: fornecedorSelecionado,
       fornecedorNome: forn?.nome || 'Desconhecido',
       dataCompra: new Date().toISOString(),
@@ -98,7 +103,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       setCodigoBipe(''); return;
     }
     setOrdemEmConferencia(ordem);
-    setItensConferidos({}); // Reseta as caixinhas
+    setItensConferidos({}); 
     setCodigoBipe('');
   };
 
@@ -253,7 +258,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                 <tfoot><tr className="border-t-2 border-slate-900"><td colSpan={3} className="p-3 text-right font-bold text-slate-500 uppercase">Valor Total do Pedido:</td><td className="p-3 text-right text-2xl font-black">R$ {ordemImpressao.valorTotal.toFixed(2)}</td></tr></tfoot>
               </table>
 
-              {/* A MÁGICA DOS CÓDIGOS DE BARRAS NATIVOS PARA LEITOR FÍSICO */}
               <div className="border-t border-slate-300 pt-8 flex justify-between items-center">
                 <div className="w-2/3">
                   <p className="text-xs text-slate-500 font-bold uppercase mb-2">Bipe para dar entrada no sistema (Código de Barras)</p>
@@ -340,19 +344,31 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
           <div className="w-full lg:w-1/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
             <h3 className="text-lg font-bold text-slate-800 mb-5 border-b border-slate-100 pb-3">{idFornEdicao ? 'Editar' : 'Novo'} Fornecedor</h3>
             <form onSubmit={lidarSalvarFornecedor} className="space-y-4">
-              <input type="text" required placeholder="Nome / Razão Social" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <input type="text" placeholder="Contato" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <button type="submit" className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold">Salvar</button>
+              <input type="text" required placeholder="Nome / Razão Social" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="text" placeholder="Contato (WhatsApp)" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="text" placeholder="Categoria (Ex: Borrachas, Caixas)" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-xl font-bold transition-all shadow-md">Salvar Cadastro</button>
             </form>
           </div>
+          
           <div className="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-4">
-            {fornecedores.map(forn => (
-              <div key={forn.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h4 className="font-black text-lg">{forn.nome}</h4>
-                <p className="text-xs text-blue-600 font-bold mb-3 uppercase tracking-wider">{forn.categoriaInsumo || 'Geral'}</p>
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2"><span>📱</span><p className="text-sm font-medium">{forn.contato || 'Sem contato'}</p></div>
-              </div>
-            ))}
+            {fornecedores.length === 0 ? (
+               <div className="md:col-span-2 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">Nenhum fornecedor cadastrado ainda.</div>
+            ) : (
+              fornecedores.map(forn => (
+                <div key={forn.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group hover:border-blue-300 transition-all">
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                    <button onClick={() => { setIdFornEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); }} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">✏️</button>
+                    <button onClick={() => lidarExcluirFornecedor(forn.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100">🗑️</button>
+                  </div>
+                  <h4 className="font-black text-slate-800 text-lg mb-1 pr-16 truncate">{forn.nome}</h4>
+                  <p className="text-xs text-blue-600 font-bold mb-3 uppercase tracking-wider">{forn.categoriaInsumo || 'Geral'}</p>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
+                    <span>📱</span><p className="text-sm font-medium text-slate-600">{forn.contato || 'Sem contato'}</p>
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
