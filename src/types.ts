@@ -1,67 +1,17 @@
-export interface Plataforma {
-  id: string;
-  nome: string;
-  comissao: number;
-  comissaoAfiliado: number;
-  taxaFixa: number;
-  freteFixo: number;
-  logo: string;
-  cor?: string;
-  textoCor?: string;
-}
+export interface Plataforma { id: string; nome: string; comissao: number; comissaoAfiliado: number; taxaFixa: number; freteFixo: number; logo: string; cor?: string; textoCor?: string; }
+export interface CustoAdicional { id: string; nome: string; valor: number; }
+export interface CustoPadrao { id: string; nome: string; valor: number; icone: string; }
+export interface Categoria { id: string; nome: string; }
+export interface Produto { id: string; foto: string; titulo: string; codigo: string; categoria?: string; custoAds?: number; custoBase: number; custosAdicionais: CustoAdicional[]; custoTotal: number; tipoLucro: 'porcentagem' | 'reais'; valorLucro: number; isKit?: boolean; estoque?: number; estoqueMinimo?: number; }
+export interface Fornecedor { id: string; nome: string; contato: string; categoriaInsumo: string; }
+export interface ItemCompra { produtoId: string; nome: string; quantidade: number; custoUnitario: number; subtotal: number; }
+export interface LancamentoFinanceiro { id: string; tipo: 'receita' | 'despesa'; descricao: string; valor: number; dataVencimento: string; status: 'pago' | 'pendente'; categoria: string; }
 
-export interface CustoAdicional {
-  id: string;
-  nome: string;
-  valor: number;
-}
-
-export interface CustoPadrao {
-  id: string;
-  nome: string;
-  valor: number;
-  icone: string;
-}
-
-export interface Categoria {
-  id: string;
-  nome: string;
-}
-
-export interface Produto {
-  id: string;
-  foto: string;
-  titulo: string;
-  codigo: string;          // REGRA NOVA: Código de barras / SKU
-  categoria?: string;
-  custoAds?: number;
-  custoBase: number;
-  custosAdicionais: CustoAdicional[];
-  custoTotal: number;
-  tipoLucro: 'porcentagem' | 'reais';
-  valorLucro: number;
-  isKit?: boolean;
-  estoque?: number;
-  estoqueMinimo?: number;  // REGRA NOVA: Alerta de estoque baixo
-}
-
-export interface Fornecedor {
-  id: string;
-  nome: string;
-  contato: string;
-  categoriaInsumo: string;
-}
-
-export interface ItemCompra {
-  produtoId: string;
-  nome: string;
-  quantidade: number;
-  custoUnitario: number;
-  subtotal: number;
-}
-
+// ATUALIZADO: Ordem de Compra
 export interface Compra {
   id: string;
+  codigoOrdem: string;          // NOVO: Ex: ORD-171829
+  statusChegada: 'aguardando' | 'recebido'; // NOVO: Controle de caminhão
   fornecedorId: string;
   fornecedorNome: string;
   dataCompra: string;
@@ -70,14 +20,4 @@ export interface Compra {
   itens: ItemCompra[];
   valorTotal: number;
   statusPagamento: 'pago' | 'pendente';
-}
-
-export interface LancamentoFinanceiro {
-  id: string;
-  tipo: 'receita' | 'despesa';
-  descricao: string;
-  valor: number;
-  dataVencimento: string;
-  status: 'pago' | 'pendente';
-  categoria: string;
 }
