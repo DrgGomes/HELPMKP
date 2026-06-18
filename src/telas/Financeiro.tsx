@@ -1,6 +1,7 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { doc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { GoogleGenerativeAI } from '@google/generative-ai'; // IMPORTAÇÃO DA IA
 import type { LancamentoFinanceiro, Compra, Fornecedor } from '../types';
 
 interface FinanceiroProps {
@@ -25,6 +26,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   const [isRecorrente, setIsRecorrente] = useState(false);
   const [mesesRepetir, setMesesRepetir] = useState('12');
 
+  // NOVO: Estado de Processamento da IA
+  const [processandoIA, setProcessandoIA] = useState(false);
+
   // --- ESTADOS DE RELATÓRIO E FILTROS ---
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
@@ -48,7 +52,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
   const [compraModal, setCompraModal] = useState<Compra | null>(null);
 
-  // --- ESTADOS DO CALENDÁRIO DRAG & DROP ---
   const [calMes, setCalMes] = useState<number>(mesAtual);
   const [calAno, setCalAno] = useState<number>(anoAtual);
   const [modoArrastar, setModoArrastar] = useState<'vencimento' | 'emissao'>('vencimento');
@@ -62,6 +65,79 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     setDraftBusca(''); setBuscaDescricao(''); setDraftMes(0); setMesFiltro(0);
     setDraftAno(0); setAnoFiltro(0); setDraftStatus('todos'); setStatusFiltro('todos');
     setDraftTipo('todos'); setTipoFiltro('todos'); setDraftFornecedor('todos'); setFornecedorFiltro('todos');
+  };
+
+  // ==========================================
+  // O CÉREBRO: VISÃO COMPUTACIONAL COM GEMINI
+  // ==========================================
+  const lidarUploadComprovanteIA = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey) {
+      alert("A chave da IA não foi encontrada no arquivo .env ou no Vercel.");
+      return;
+    }
+
+    setProcessandoIA(true);
+
+    try {
+      // 1. Converter a foto em Base64 para enviar pra IA
+      const fileToGenerativePart = async (f: File) => {
+        const base64EncodedDataPromise = new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+          reader.readAsDataURL(f);
+        });
+        return { inlineData: { data: await base64EncodedDataPromise, mimeType: f.type } };
+      };
+
+      const imagePart = await fileToGenerativePart(file);
+
+      // 2. Conectar ao Gemini 1.5 Flash (Super rápido para imagens)
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const promptText = `
+        Você é um assistente financeiro de um sistema ERP.
+        Analise a imagem deste recibo, nota fiscal ou comprovante.
+        Extraia as informações cruciais e retorne EXATAMENTE UM OBJETO JSON, sem crases de formatação, sem markdown, apenas as chaves e valores.
+        Se não achar alguma informação, deduza da melhor forma ou deixe vazio.
+        Formato obrigatório JSON:
+        {
+          "descricao": "Resumo do que foi comprado ou pago",
+          "valor": 150.50, // Apenas o numero, formato float (ponto para decimais)
+          "data": "2026-06-18" // Formato YYYY-MM-DD
+        }
+      `;
+
+      // 3. Executar o raciocínio da IA
+      const result = await model.generateContent([promptText, imagePart]);
+      const responseText = result.response.text();
+
+      // 4. Limpar o texto e transformar em Objeto (Garante que vai ler o JSON mesmo que a IA mande crases)
+      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const dadosExtraidos = JSON.parse(cleanedText);
+
+      // 5. Preencher os campos do formulário na tela para o usuário confirmar
+      setDescricao(dadosExtraidos.descricao || 'Despesa Lida por IA');
+      setValor(dadosExtraidos.valor ? dadosExtraidos.valor.toString() : '');
+      setDataLancamento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
+      setDataVencimento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
+      setTipo('despesa'); // Assume que notas escaneadas são despesas por padrão
+      setCategoria('Extraída via IA');
+      
+      alert("✅ IA leu o comprovante! Confirme os dados e clique em Salvar.");
+
+    } catch (error) {
+      console.error(error);
+      alert("❌ Falha ao processar a imagem. Tente uma foto mais nítida.");
+    } finally {
+      setProcessandoIA(false);
+      // Limpa o input para poder subir a mesma foto de novo se quiser
+      event.target.value = '';
+    }
   };
 
   // --- MÁGICA: SALVAR E MULTIPLICAR ---
@@ -147,22 +223,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- FILTRAGEM DO EXTRATO ---
-  const lancamentosFiltrados = useMemo(() => {
-    return lancamentos.filter(l => {
-      const dataLanc = new Date(l.dataVencimento + 'T12:00:00'); 
-      const mes = dataLanc.getMonth() + 1; const ano = dataLanc.getFullYear();
-      const matchBusca = l.descricao.toLowerCase().includes(buscaDescricao.toLowerCase()) || l.categoria.toLowerCase().includes(buscaDescricao.toLowerCase());
-      return matchBusca && (mesFiltro === 0 || mes === mesFiltro) && (anoFiltro === 0 || ano === anoFiltro) && (statusFiltro === 'todos' || l.status === statusFiltro) && (tipoFiltro === 'todos' || l.tipo === tipoFiltro) && (fornecedorFiltro === 'todos' || l.fornecedorId === fornecedorFiltro);
-    }).sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime());
-  }, [lancamentos, buscaDescricao, mesFiltro, anoFiltro, statusFiltro, tipoFiltro, fornecedorFiltro]);
-
-  const resumoFiltrado = useMemo(() => {
-    const rec = lancamentosFiltrados.filter(l => l.tipo === 'receita').reduce((a, b) => a + b.valor, 0);
-    const desp = lancamentosFiltrados.filter(l => l.tipo === 'despesa').reduce((a, b) => a + b.valor, 0);
-    return { receitas: rec, despesas: desp, saldo: rec - desp };
-  }, [lancamentosFiltrados]);
-
   // --- RELATÓRIO DE FORNECEDORES ---
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
@@ -183,15 +243,29 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
+  // --- FILTRAGEM DO EXTRATO ---
+  const lancamentosFiltrados = useMemo(() => {
+    return lancamentos.filter(l => {
+      const dataLanc = new Date(l.dataVencimento + 'T12:00:00'); 
+      const mes = dataLanc.getMonth() + 1; const ano = dataLanc.getFullYear();
+      const matchBusca = l.descricao.toLowerCase().includes(buscaDescricao.toLowerCase()) || l.categoria.toLowerCase().includes(buscaDescricao.toLowerCase());
+      return matchBusca && (mesFiltro === 0 || mes === mesFiltro) && (anoFiltro === 0 || ano === anoFiltro) && (statusFiltro === 'todos' || l.status === statusFiltro) && (tipoFiltro === 'todos' || l.tipo === tipoFiltro) && (fornecedorFiltro === 'todos' || l.fornecedorId === fornecedorFiltro);
+    }).sort((a, b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime());
+  }, [lancamentos, buscaDescricao, mesFiltro, anoFiltro, statusFiltro, tipoFiltro, fornecedorFiltro]);
+
+  const resumoFiltrado = useMemo(() => {
+    const rec = lancamentosFiltrados.filter(l => l.tipo === 'receita').reduce((a, b) => a + b.valor, 0);
+    const desp = lancamentosFiltrados.filter(l => l.tipo === 'despesa').reduce((a, b) => a + b.valor, 0);
+    return { receitas: rec, despesas: desp, saldo: rec - desp };
+  }, [lancamentosFiltrados]);
+
   // --- LÓGICA DO CALENDÁRIO DRAG & DROP ---
   const diasCalendario = useMemo(() => {
     const primeiroDiaSemana = new Date(calAno, calMes - 1, 1).getDay();
     const totalDiasMes = new Date(calAno, calMes, 0).getDate();
     const dias = [];
     for (let i = 0; i < primeiroDiaSemana; i++) dias.push(null);
-    for (let i = 1; i <= totalDiasMes; i++) {
-      dias.push(`${calAno}-${String(calMes).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
-    }
+    for (let i = 1; i <= totalDiasMes; i++) dias.push(`${calAno}-${String(calMes).padStart(2, '0')}-${String(i).padStart(2, '0')}`);
     return dias;
   }, [calAno, calMes]);
 
@@ -210,7 +284,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   };
 
   const lidarDragStart = (e: any, id: string) => e.dataTransfer.setData('lancId', id);
-  const lidarDragOver = (e: any) => e.preventDefault(); // Permite o drop
+  const lidarDragOver = (e: any) => e.preventDefault(); 
   const lidarDrop = async (e: any, dataAlvo: string) => {
     e.preventDefault();
     const idLanc = e.dataTransfer.getData('lancId');
@@ -256,7 +330,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
       {abaAtiva === 'caixa' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-fade-in print:hidden">
           <div className="xl:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit sticky top-6">
-            <h3 className="font-black text-lg text-slate-800 mb-5 border-b border-slate-100 pb-3">{idEdicao ? '✏️ Editando' : '➕ Novo'} Lançamento</h3>
+            
+            <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
+              <h3 className="font-black text-lg text-slate-800">{idEdicao ? '✏️ Editando' : '➕ Novo'} Lançamento</h3>
+              
+              {/* O BOTÃO MÁGICO DA IA */}
+              <label className={`cursor-pointer bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-500/30 transition-all ${processandoIA ? 'opacity-50 pointer-events-none' : ''}`}>
+                {processandoIA ? '⏳ Analisando...' : '✨ Ler Recibo'}
+                <input type="file" accept="image/*" capture="environment" onChange={lidarUploadComprovanteIA} className="hidden" />
+              </label>
+            </div>
+
             <form onSubmit={lidarSalvar} className="space-y-4">
               <div className="flex bg-slate-100 p-1.5 rounded-xl"><button type="button" onClick={() => { setTipo('despesa'); setFornSelecionado(''); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${tipo === 'despesa' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500'}`}>Despesa (-)</button><button type="button" onClick={() => { setTipo('receita'); setFornSelecionado(''); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${tipo === 'receita' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500'}`}>Receita (+)</button></div>
               <input type="text" required placeholder="Descrição da conta" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none" />
@@ -375,7 +459,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
         </div>
       )}
 
-      {/* --- ABA 3: CALENDÁRIO DRAG AND DROP (A MÁGICA) --- */}
+      {/* --- ABA 3: CALENDÁRIO DRAG AND DROP --- */}
       {abaAtiva === 'calendario' && (
         <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-200 animate-fade-in print:hidden">
           
@@ -387,8 +471,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             </div>
 
             <div className="flex bg-slate-900 p-1.5 rounded-2xl shadow-inner border border-slate-800">
-              <button onClick={() => setModoArrastar('vencimento')} className={`px-6 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${modoArrastar === 'vencimento' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}>🎯 Modificar Vencimento</button>
-              <button onClick={() => setModoArrastar('emissao')} className={`px-6 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${modoArrastar === 'emissao' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}>📄 Modificar Emissão</button>
+              <button onClick={() => setModoArrastar('vencimento')} className={`px-6 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${modoArrastar === 'vencimento' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}>🎯 Vencimentos</button>
+              <button onClick={() => setModoArrastar('emissao')} className={`px-6 py-2.5 text-xs font-black rounded-xl transition-all uppercase tracking-wider ${modoArrastar === 'emissao' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-slate-300'}`}>📄 Emissões</button>
             </div>
           </div>
 
@@ -407,7 +491,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
                   const numDia = parseInt(dataString.split('-')[2]);
                   const hoje = new Date().toISOString().split('T')[0] === dataString;
                   
-                  // Puxa as faturas que caem neste dia (dependendo se a chave está em Vencimento ou Emissão)
                   const faturasDoDia = lancamentosDoCalendario.filter(l => {
                     const dataRef = modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento);
                     return dataRef === dataString;
