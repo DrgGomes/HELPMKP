@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { doc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { GoogleGenerativeAI } from '@google/generative-ai'; // IMPORTAÇÃO DA IA
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { LancamentoFinanceiro, Compra, Fornecedor } from '../types';
 
 interface FinanceiroProps {
@@ -13,7 +13,6 @@ interface FinanceiroProps {
 export default function Financeiro({ lancamentos, compras, fornecedores }: FinanceiroProps) {
   const [abaAtiva, setAbaAtiva] = useState<'caixa' | 'fornecedores' | 'calendario'>('caixa');
 
-  // --- ESTADOS DO FORMULÁRIO ---
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
   const [tipo, setTipo] = useState<'receita' | 'despesa'>('despesa');
   const [descricao, setDescricao] = useState('');
@@ -25,11 +24,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
 
   const [isRecorrente, setIsRecorrente] = useState(false);
   const [mesesRepetir, setMesesRepetir] = useState('12');
-
-  // NOVO: Estado de Processamento da IA
   const [processandoIA, setProcessandoIA] = useState(false);
 
-  // --- ESTADOS DE RELATÓRIO E FILTROS ---
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
@@ -76,14 +72,13 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) {
-      alert("A chave da IA não foi encontrada no arquivo .env ou no Vercel.");
+      alert("ERRO CRÍTICO: A chave da IA (VITE_GEMINI_API_KEY) não foi encontrada! Verifique se você colocou na Vercel e fez um novo Deploy.");
       return;
     }
 
     setProcessandoIA(true);
 
     try {
-      // 1. Converter a foto em Base64 para enviar pra IA
       const fileToGenerativePart = async (f: File) => {
         const base64EncodedDataPromise = new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -94,8 +89,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
       };
 
       const imagePart = await fileToGenerativePart(file);
-
-      // 2. Conectar ao Gemini 1.5 Flash (Super rápido para imagens)
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
@@ -112,35 +105,31 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
         }
       `;
 
-      // 3. Executar o raciocínio da IA
       const result = await model.generateContent([promptText, imagePart]);
       const responseText = result.response.text();
 
-      // 4. Limpar o texto e transformar em Objeto (Garante que vai ler o JSON mesmo que a IA mande crases)
       const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
       const dadosExtraidos = JSON.parse(cleanedText);
 
-      // 5. Preencher os campos do formulário na tela para o usuário confirmar
       setDescricao(dadosExtraidos.descricao || 'Despesa Lida por IA');
       setValor(dadosExtraidos.valor ? dadosExtraidos.valor.toString() : '');
       setDataLancamento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
       setDataVencimento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
-      setTipo('despesa'); // Assume que notas escaneadas são despesas por padrão
+      setTipo('despesa');
       setCategoria('Extraída via IA');
       
       alert("✅ IA leu o comprovante! Confirme os dados e clique em Salvar.");
 
-    } catch (error) {
-      console.error(error);
-      alert("❌ Falha ao processar a imagem. Tente uma foto mais nítida.");
+    } catch (error: any) {
+      console.error("ERRO TÉCNICO DETALHADO DA IA:", error);
+      // AGORA O SISTEMA VAI CUSPIR O ERRO REAL NA SUA TELA
+      alert(`❌ Ocorreu um erro técnico ao processar:\n\n${error.message || error}\n\nTire um print desta mensagem exata e envie para analisarmos.`);
     } finally {
       setProcessandoIA(false);
-      // Limpa o input para poder subir a mesma foto de novo se quiser
       event.target.value = '';
     }
   };
 
-  // --- MÁGICA: SALVAR E MULTIPLICAR ---
   const lidarSalvar = async (e: any) => {
     e.preventDefault();
     if (!descricao || !valor) return;
@@ -223,7 +212,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- RELATÓRIO DE FORNECEDORES ---
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
     if (fornecedorFiltro !== 'todos' && fornecedorFiltro !== '') listaBase = fornecedores.filter(f => f.id === fornecedorFiltro);
@@ -243,7 +231,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
-  // --- FILTRAGEM DO EXTRATO ---
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter(l => {
       const dataLanc = new Date(l.dataVencimento + 'T12:00:00'); 
@@ -259,7 +246,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     return { receitas: rec, despesas: desp, saldo: rec - desp };
   }, [lancamentosFiltrados]);
 
-  // --- LÓGICA DO CALENDÁRIO DRAG & DROP ---
   const diasCalendario = useMemo(() => {
     const primeiroDiaSemana = new Date(calAno, calMes - 1, 1).getDay();
     const totalDiasMes = new Date(calAno, calMes, 0).getDate();
@@ -333,11 +319,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             
             <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
               <h3 className="font-black text-lg text-slate-800">{idEdicao ? '✏️ Editando' : '➕ Novo'} Lançamento</h3>
-              
-              {/* O BOTÃO MÁGICO DA IA */}
               <label className={`cursor-pointer bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-500/30 transition-all ${processandoIA ? 'opacity-50 pointer-events-none' : ''}`}>
                 {processandoIA ? '⏳ Analisando...' : '✨ Ler Recibo'}
-                <input type="file" accept="image/*" capture="environment" onChange={lidarUploadComprovanteIA} className="hidden" />
+                <input type="file" accept="image/*,application/pdf" onChange={lidarUploadComprovanteIA} className="hidden" />
               </label>
             </div>
 
