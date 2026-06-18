@@ -32,6 +32,7 @@ export interface Produto {
   id: string;
   foto: string;
   titulo: string;
+  codigo: string;          // REGRA NOVA: Código de barras / SKU
   categoria?: string;
   custoAds?: number;
   custoBase: number;
@@ -41,6 +42,7 @@ export interface Produto {
   valorLucro: number;
   isKit?: boolean;
   estoque?: number;
+  estoqueMinimo?: number;  // REGRA NOVA: Alerta de estoque baixo
 }
 
 export interface Fornecedor {
@@ -58,13 +60,12 @@ export interface ItemCompra {
   subtotal: number;
 }
 
-// ATUALIZADO: Adicionado Número do Vale e Data de Pagamento
 export interface Compra {
   id: string;
   fornecedorId: string;
   fornecedorNome: string;
   dataCompra: string;
-  dataPagamento?: string; 
+  dataPagamento?: string;
   numeroVale?: string;
   itens: ItemCompra[];
   valorTotal: number;
