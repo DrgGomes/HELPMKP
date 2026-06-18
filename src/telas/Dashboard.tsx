@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { Produto, Plataforma, LancamentoFinanceiro } from '../types';
 
 interface DashboardProps {
@@ -60,7 +60,7 @@ export default function Dashboard({ produtos, plataformas, lancamentos, setTelaA
         </div>
       </header>
 
-      {/* CARDS PRINCIPAIS (AGORA SÃO GLOBAIS - IGNORAM O FILTRO DE MÊS) */}
+      {/* CARDS PRINCIPAIS (AGORA SÃO GLOBAIS E IGNORAM O FILTRO DE MÊS) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-slate-900 p-6 rounded-2xl shadow-lg border border-slate-800 text-white">
           <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2" title="Soma de tudo que já foi pago na vida">Saldo em Caixa Geral</p>
