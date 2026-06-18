@@ -10,15 +10,23 @@ interface FornecedoresProps {
 
 export default function Fornecedores({ fornecedores, produtos }: FornecedoresProps) {
   const [abaAtiva, setAbaAtiva] = useState<'lista' | 'nova_compra'>('nova_compra');
+  
+  // Estados de Fornecedores
   const [idFornEdicao, setIdFornEdicao] = useState<string | null>(null);
   const [nomeForn, setNomeForn] = useState('');
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
+  // Estados do Carrinho
   const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState('');
+  
+  // NOVOS ESTADOS: Financeiro da Compra
+  const [numeroVale, setNumeroVale] = useState('');
+  const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0]);
 
+  // --- FUNÇÕES DE FORNECEDORES ---
   const lidarSalvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeForn) return;
@@ -38,12 +46,19 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
     if (userId && window.confirm("Excluir fornecedor?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id));
   };
 
+  // --- FUNÇÕES DE CARRINHO ---
   const adicionarAoCarrinho = () => {
     if (!produtoSelecionado) return;
     const prodRef = produtos.find(p => p.id === produtoSelecionado);
     if (!prodRef || carrinho.some(item => item.produtoId === prodRef.id)) return;
 
-    setCarrinho([...carrinho, { produtoId: prodRef.id, nome: prodRef.titulo, quantidade: 1, custoUnitario: prodRef.custoBase, subtotal: prodRef.custoBase }]);
+    setCarrinho([...carrinho, { 
+      produtoId: prodRef.id, 
+      nome: prodRef.titulo, 
+      quantidade: 1, 
+      custoUnitario: prodRef.custoBase, 
+      subtotal: prodRef.custoBase 
+    }]);
     setProdutoSelecionado('');
   };
 
@@ -59,11 +74,11 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
   };
 
   const removerDoCarrinho = (id: string) => setCarrinho(carrinho.filter(item => item.produtoId !== id));
-
   const totalCompra = carrinho.reduce((acc, item) => acc + item.subtotal, 0);
 
+  // --- O CORAÇÃO DO SISTEMA: FINALIZAR COMPRA ---
   const finalizarCompra = async () => {
-    if (!fornecedorSelecionado || carrinho.length === 0) return alert("Selecione fornecedor e itens!");
+    if (!fornecedorSelecionado || carrinho.length === 0) return alert("Selecione fornecedor e adicione itens!");
     const userId = auth.currentUser?.uid as string;
     if (!userId) return;
     const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
@@ -76,95 +91,188 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
         await updateDoc(doc(db, 'usuarios', userId, 'produtos', item.produtoId), { estoque: novoEstoque });
       }
 
-      // 2. LANÇA A CONTA A PAGAR NO CAIXA
+      // 2. SALVA O HISTÓRICO DA COMPRA
+      await addDoc(collection(db, 'usuarios', userId, 'compras'), {
+        fornecedorId: fornecedorSelecionado,
+        fornecedorNome: forn?.nome || 'Desconhecido',
+        dataCompra: new Date().toISOString(),
+        dataPagamento: dataPagamento,
+        numeroVale: numeroVale,
+        itens: carrinho,
+        valorTotal: totalCompra,
+        statusPagamento: 'pendente'
+      });
+
+      // 3. LANÇA A CONTA A PAGAR NO FLUXO DE CAIXA AUTOMATICAMENTE
       await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
         tipo: 'despesa',
-        descricao: `Compra: ${forn?.nome} (${carrinho.reduce((a, b) => a + b.quantidade, 0)} itens)`,
+        descricao: `Material: ${forn?.nome} ${numeroVale ? `(Vale: ${numeroVale})` : ''}`,
         valor: totalCompra,
-        dataVencimento: new Date().toISOString().split('T')[0], // Sugere vencimento para hoje
+        dataVencimento: dataPagamento,
         status: 'pendente',
         categoria: 'Fornecedores'
       });
 
-      alert("Entrada Registrada! Estoque atualizado e fatura enviada ao Contas a Pagar.");
-      setCarrinho([]); setFornecedorSelecionado('');
+      alert("Show! Estoque atualizado e fatura lançada no Contas a Pagar com sucesso.");
+      
+      // Limpa a tela para a próxima compra
+      setCarrinho([]); 
+      setFornecedorSelecionado('');
+      setNumeroVale('');
+      setDataPagamento(new Date().toISOString().split('T')[0]);
     } catch (error) { console.error(error); }
   };
 
   return (
-    <div className="animate-fade-in max-w-6xl mx-auto space-y-8">
-      <header className="mb-2">
+    <div className="animate-fade-in max-w-7xl mx-auto space-y-8">
+      <header className="mb-4">
         <h2 className="text-3xl font-black text-slate-800 flex items-center gap-2"><span>🏭</span> Compras & Fornecedores</h2>
-        <p className="text-slate-500 mt-1">Lançou aqui, o estoque sobe e a conta a pagar é gerada automaticamente.</p>
+        <p className="text-slate-500 mt-1">Cadastre compras, suba o estoque e gere contas a pagar num só clique.</p>
       </header>
+
       <div className="flex gap-2 border-b border-slate-200 pb-px">
         <button onClick={() => setAbaAtiva('nova_compra')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_compra' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🛒 Lançar Entrada (Rápido)</button>
-        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>📋 Fornecedores</button>
+        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>📋 Cadastrar Fornecedores</button>
       </div>
 
       {abaAtiva === 'nova_compra' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <h3 className="text-lg font-black text-slate-800 mb-4">1. Dados do Pedido</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none"><option value="">Selecione o Fornecedor...</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select>
-                <div className="flex gap-2"><select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none"><option value="">Buscar Insumo/Produto...</option>{produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}</select><button onClick={adicionarAoCarrinho} className="px-5 bg-blue-600 text-white font-black rounded-xl">+</button></div>
+        <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+          
+          {/* COLUNA ESQUERDA: Formulários e Carrinho */}
+          <div className="w-full lg:w-2/3 space-y-6">
+            
+            {/* Bloco 1: Fornecedor e Produto */}
+            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">1. Dados Básicos</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Fornecedor</label>
+                  <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="">Selecione quem está vendendo...</option>
+                    {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Buscar Insumo / Produto</label>
+                  <div className="flex gap-2">
+                    <select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                      <option value="">Buscar no estoque...</option>
+                      {produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}
+                    </select>
+                    <button onClick={adicionarAoCarrinho} className="px-6 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xl shadow-md transition-colors">+</button>
+                  </div>
+                </div>
               </div>
             </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 min-h-[300px]">
-              <h3 className="text-lg font-black text-slate-800 mb-4">2. Itens da Entrada</h3>
-              {carrinho.length === 0 ? <p className="text-center text-slate-400 mt-10">Carrinho vazio.</p> : (
-                <div className="space-y-3">
+
+            {/* Bloco 2: Itens do Carrinho */}
+            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 min-h-[250px]">
+              <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">2. Itens da Entrada (Quantidade e Valor Pago)</h3>
+              {carrinho.length === 0 ? (
+                 <div className="flex flex-col items-center justify-center h-32 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50"><span className="text-3xl mb-2">🛒</span><p className="font-medium text-sm">Adicione produtos acima para começar a preencher.</p></div>
+              ) : (
+                <div className="space-y-4">
                   {carrinho.map(item => (
-                    <div key={item.produtoId} className="flex flex-col sm:flex-row items-center gap-4 bg-slate-50 p-3 rounded-xl border border-slate-200">
-                      <div className="flex-1"><p className="font-bold text-sm truncate">{item.nome}</p></div>
-                      <div className="flex items-center gap-3">
-                        <input type="number" min="1" value={item.quantidade} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'quantidade', parseInt(e.target.value) || 0)} className="w-20 px-3 py-2 border rounded-lg text-center font-bold" title="Quantidade" />
-                        <input type="number" step="0.01" value={item.custoUnitario} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'custoUnitario', parseFloat(e.target.value) || 0)} className="w-24 px-3 py-2 border rounded-lg text-center font-bold" title="Custo Unitário" />
-                        <span className="font-black w-24 text-right">R$ {item.subtotal.toFixed(2)}</span>
-                        <button onClick={() => removerDoCarrinho(item.produtoId)} className="text-rose-500 font-bold ml-2">✕</button>
+                    <div key={item.produtoId} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm relative pr-12">
+                      <div className="flex-1"><p className="font-bold text-slate-800 text-base">{item.nome}</p></div>
+                      
+                      <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto">
+                        <div className="flex flex-col w-24">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Qtd. Comprada</span>
+                          <input type="number" min="1" value={item.quantidade} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'quantidade', parseInt(e.target.value) || 0)} className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-black text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+                        </div>
+                        <div className="flex flex-col w-32">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Custo Un. (R$)</span>
+                          <input type="number" step="0.01" value={item.custoUnitario} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'custoUnitario', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+                        </div>
+                        <div className="flex flex-col text-right min-w-[100px] ml-auto md:ml-4">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subtotal</span>
+                          <span className="font-black text-slate-800 text-xl">R$ {item.subtotal.toFixed(2)}</span>
+                        </div>
                       </div>
+                      
+                      {/* Botão de Excluir Absoluto no Canto */}
+                      <button onClick={() => removerDoCarrinho(item.produtoId)} className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-rose-100 text-rose-600 rounded-lg font-bold hover:bg-rose-200 transition-colors">✕</button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
-          </div>
-          <div className="bg-slate-900 p-6 rounded-2xl shadow-xl h-fit sticky top-6 text-white border border-slate-800">
-            <h3 className="text-lg font-black mb-6 border-b border-slate-700 pb-4">3. Resumo</h3>
-            <div className="bg-slate-800 p-5 rounded-xl border border-slate-700 mb-6">
-              <p className="text-xs font-bold text-slate-400 uppercase">Valor Total a Pagar</p>
-              <p className="text-3xl font-black text-emerald-400">R$ {totalCompra.toFixed(2)}</p>
+
+            {/* Bloco 3: Dados de Pagamento */}
+            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+              <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3 flex items-center gap-2"><span>💳</span> 3. Informações de Pagamento</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Número do Vale / Nota</label>
+                  <input type="text" placeholder="Ex: Vale 140 / NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Data Combinada p/ Pagamento</label>
+                  <input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+              </div>
             </div>
-            <button onClick={finalizarCompra} disabled={carrinho.length === 0 || !fornecedorSelecionado} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-lg disabled:opacity-50">Registrar Compra</button>
+
           </div>
+
+          {/* COLUNA DIREITA: Resumo Financeiro (Sem Sobreposição) */}
+          <div className="w-full lg:w-1/3 bg-slate-900 p-6 rounded-2xl shadow-xl h-fit sticky top-6 text-white border border-slate-800">
+            <h3 className="text-xl font-black mb-6 border-b border-slate-700 pb-4">Resumo Final</h3>
+            
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 mb-6 shadow-inner text-center">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Valor Total a Pagar</p>
+              <p className="text-4xl font-black text-emerald-400">R$ {totalCompra.toFixed(2)}</p>
+            </div>
+
+            <div className="space-y-3 mb-8 bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
+              <div className="flex justify-between text-sm text-slate-300"><p>Itens no carrinho:</p><p className="font-bold text-white">{carrinho.reduce((acc, i) => acc + i.quantidade, 0)} un</p></div>
+              <div className="flex justify-between text-sm text-slate-300"><p>Data Quitação:</p><p className="font-bold text-white">{dataPagamento.split('-').reverse().join('/')}</p></div>
+            </div>
+
+            <button 
+              onClick={finalizarCompra} 
+              disabled={carrinho.length === 0 || !fornecedorSelecionado} 
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-lg transition-all shadow-lg shadow-blue-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Registrar no Fluxo
+            </button>
+            <p className="text-center text-[10px] text-slate-500 mt-4 px-2">Ao registrar, o estoque será atualizado e a conta enviada ao setor financeiro.</p>
+          </div>
+
         </div>
       )}
 
       {abaAtiva === 'lista' && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-2xl border border-slate-200 h-fit">
-            <h3 className="font-bold mb-4">{idFornEdicao ? 'Editar' : 'Novo'} Fornecedor</h3>
+        <div className="flex flex-col lg:flex-row gap-6 items-start animate-fade-in">
+          <div className="w-full lg:w-1/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
+            <h3 className="text-lg font-bold text-slate-800 mb-5 border-b border-slate-100 pb-3">{idFornEdicao ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
             <form onSubmit={lidarSalvarFornecedor} className="space-y-4">
-              <input type="text" required placeholder="Nome / Razão Social" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <input type="text" placeholder="Contato (WhatsApp)" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <input type="text" placeholder="Ex: Borrachas, Caixas" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <button type="submit" className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold">Salvar</button>
+              <input type="text" required placeholder="Nome / Razão Social" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="text" placeholder="Contato (WhatsApp)" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <input type="text" placeholder="Categoria (Ex: Borrachas, Caixas)" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500" />
+              <button type="submit" className="w-full bg-slate-800 hover:bg-slate-900 text-white py-3.5 rounded-xl font-bold transition-all shadow-md">Salvar Cadastro</button>
             </form>
           </div>
-          <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {fornecedores.map(forn => (
-              <div key={forn.id} className="bg-white p-5 rounded-2xl border border-slate-200 relative group">
-                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                  <button onClick={() => { setIdFornEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); }} className="p-1 bg-slate-100 rounded">✏️</button>
-                  <button onClick={() => lidarExcluirFornecedor(forn.id)} className="p-1 bg-rose-50 rounded">🗑️</button>
+          
+          <div className="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-4">
+            {fornecedores.length === 0 ? (
+               <div className="md:col-span-2 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500">Nenhum fornecedor cadastrado ainda.</div>
+            ) : (
+              fornecedores.map(forn => (
+                <div key={forn.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group hover:border-blue-300 transition-all">
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
+                    <button onClick={() => { setIdFornEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); }} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">✏️</button>
+                    <button onClick={() => lidarExcluirFornecedor(forn.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100">🗑️</button>
+                  </div>
+                  <h4 className="font-black text-slate-800 text-lg mb-1 pr-16 truncate">{forn.nome}</h4>
+                  <p className="text-xs text-blue-600 font-bold mb-3 uppercase tracking-wider">{forn.categoriaInsumo || 'Geral'}</p>
+                  <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2">
+                    <span>📱</span><p className="text-sm font-medium text-slate-600">{forn.contato || 'Sem contato'}</p>
+                  </div>
                 </div>
-                <h4 className="font-black text-lg mb-1">{forn.nome}</h4>
-                <p className="text-xs text-slate-500 font-bold mb-3">{forn.categoriaInsumo || 'Geral'}</p>
-                <p className="text-sm bg-slate-50 p-2 rounded-lg border">{forn.contato || 'Sem contato'}</p>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
