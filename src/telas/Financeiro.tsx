@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { doc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { LancamentoFinanceiro, Compra, Fornecedor } from '../types';
@@ -25,7 +25,10 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const [compraModal, setCompraModal] = useState<Compra | null>(null);
 
-  // --- ESTADOS DE FILTRO APLICADO (O que realmente filtra a tela) ---
+  // --- ORDENAÇÃO DE FATURAS DO FORNECEDOR ---
+  const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
+
+  // --- ESTADOS DE FILTRO APLICADO ---
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
   const anoAtual = dataAtual.getFullYear();
@@ -37,7 +40,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
 
-  // --- ESTADOS DE RASCUNHO DO FILTRO (O que fica nas caixinhas antes de clicar em Buscar) ---
+  // --- ESTADOS DE RASCUNHO DO FILTRO ---
   const [draftBusca, setDraftBusca] = useState('');
   const [draftMes, setDraftMes] = useState<number>(mesAtual);
   const [draftAno, setDraftAno] = useState<number>(anoAtual);
@@ -124,21 +127,33 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- INTELIGÊNCIA: DÍVIDAS POR FORNECEDOR ---
+  // --- INTELIGÊNCIA: DÍVIDAS POR FORNECEDOR E ORDENAÇÃO DINÂMICA ---
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
-    // Filtra qual fornecedor exibir baseado no FILTRO APLICADO
     if (fornecedorFiltro !== 'todos' && fornecedorFiltro !== '') {
       listaBase = fornecedores.filter(f => f.id === fornecedorFiltro);
     }
 
     return listaBase.map(f => {
-      // ATENÇÃO: Aqui ignoramos o filtro de mês! Queremos ver TODA a dívida pendente do fornecedor.
       const faturasPendentes = lancamentos.filter(l => l.fornecedorId === f.id && l.status === 'pendente' && l.tipo === 'despesa');
       const totalDevendo = faturasPendentes.reduce((a, b) => a + b.valor, 0);
-      return { ...f, faturas: faturasPendentes.sort((a,b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime()), totalDevendo };
+
+      // O MOTOR DE ORDENAÇÃO APLICADO ÀS FATURAS
+      const faturasOrdenadas = faturasPendentes.sort((a, b) => {
+        if (ordemFaturas === 'vencimento_asc') return new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime();
+        if (ordemFaturas === 'emissao_desc') {
+          const dA = a.dataLancamento ? new Date(a.dataLancamento).getTime() : 0;
+          const dB = b.dataLancamento ? new Date(b.dataLancamento).getTime() : 0;
+          return dB - dA;
+        }
+        if (ordemFaturas === 'valor_desc') return b.valor - a.valor;
+        if (ordemFaturas === 'valor_asc') return a.valor - b.valor;
+        return 0;
+      });
+
+      return { ...f, faturas: faturasOrdenadas, totalDevendo };
     }).filter(f => f.totalDevendo > 0).sort((a, b) => b.totalDevendo - a.totalDevendo);
-  }, [fornecedores, lancamentos, fornecedorFiltro]);
+  }, [fornecedores, lancamentos, fornecedorFiltro, ordemFaturas]);
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
@@ -170,7 +185,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   return (
     <div className="animate-fade-in max-w-7xl mx-auto space-y-6 relative">
       
-      {/* Estilos para o PDF */}
       <style dangerouslySetInnerHTML={{__html: `
         @media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 10px; } .no-print { display: none !important; } }
       `}} />
@@ -187,7 +201,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
         </div>
       </header>
 
-      {/* --- MÓDULO DE RELATÓRIO E FILTROS (MECÂNICA DE RASCUNHO) --- */}
+      {/* --- MÓDULO DE RELATÓRIO E FILTROS --- */}
       {mostrarRelatorio && (
         <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-lg space-y-5 no-print animate-fade-in">
           <div className="border-b border-slate-200 pb-3">
@@ -250,7 +264,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
           <p className="text-xs text-slate-500 mt-1">Filtros Ativos: Mês {mesFiltro === 0 ? 'Todos' : mesFiltro}/{anoFiltro === 0 ? 'Todos' : anoFiltro} | Status: {statusFiltro.toUpperCase()} | Fornecedor: {fornecedorFiltro === 'todos' ? 'TODOS' : (fornecedores.find(f=>f.id === fornecedorFiltro)?.nome || 'AVULSOS')}</p>
         </div>
 
-        {/* Resumo no PDF */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Receitas (+)</p><p className="text-xl font-black text-emerald-600">R$ {resumoFiltrado.receitas.toFixed(2)}</p></div>
           <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Despesas (-)</p><p className="text-xl font-black text-rose-600">R$ {resumoFiltrado.despesas.toFixed(2)}</p></div>
@@ -301,7 +314,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
           </div>
 
           <div className="xl:col-span-8 space-y-4">
-            {/* O Resumo fica fixo no topo do extrato, independente do botão de PDF */}
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Receitas (+)</p><p className="text-xl font-black text-emerald-600">R$ {resumoFiltrado.receitas.toFixed(2)}</p></div>
               <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Despesas (-)</p><p className="text-xl font-black text-rose-600">R$ {resumoFiltrado.despesas.toFixed(2)}</p></div>
@@ -346,6 +358,21 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
       {abaAtiva === 'fornecedores' && (
         <div className="space-y-6 animate-fade-in print:hidden pb-32">
           
+          {/* BARRA DE ORDENAÇÃO DINÂMICA */}
+          {relatorioFornecedores.length > 0 && (
+            <div className="flex justify-end">
+              <div className="flex items-center gap-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200">
+                <span className="text-xs font-bold text-slate-500 uppercase">Ordenar faturas por:</span>
+                <select value={ordemFaturas} onChange={(e) => setOrdemFaturas(e.target.value as any)} className="bg-slate-50 border border-slate-200 text-sm font-bold text-slate-700 rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-rose-500">
+                  <option value="vencimento_asc">Vencimento (Mais próximos)</option>
+                  <option value="emissao_desc">Data de Emissão (Mais recentes)</option>
+                  <option value="valor_desc">Valor (Maior para o menor)</option>
+                  <option value="valor_asc">Valor (Menor para o maior)</option>
+                </select>
+              </div>
+            </div>
+          )}
+
           {relatorioFornecedores.length === 0 ? (
             <div className="bg-white p-12 rounded-2xl border border-dashed border-slate-300 text-center"><span className="text-4xl mb-4 block">🎉</span><h3 className="text-xl font-bold text-slate-700">Nenhuma dívida pendente de material!</h3></div>
           ) : (
@@ -392,7 +419,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             ))
           )}
           
-          {/* TOTALIZADOR NO RODAPÉ */}
           {relatorioFornecedores.length > 0 && (
             <div className="bg-rose-900 p-8 rounded-3xl shadow-xl border border-rose-800 text-white flex flex-col md:flex-row justify-between items-center gap-6 mt-8">
               <div><h3 className="text-xl font-bold text-rose-200 uppercase tracking-widest mb-1">Risco Total em Fornecedores</h3><p className="text-sm text-rose-300">Soma de todas as faturas pendentes da fábrica (Independente de Mês).</p></div>
