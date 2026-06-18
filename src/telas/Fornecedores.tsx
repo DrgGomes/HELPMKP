@@ -22,7 +22,7 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
   const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState('');
   
-  // NOVOS ESTADOS: Financeiro da Compra
+  // Estados: Financeiro da Compra
   const [numeroVale, setNumeroVale] = useState('');
   const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0]);
 
@@ -76,7 +76,7 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
   const removerDoCarrinho = (id: string) => setCarrinho(carrinho.filter(item => item.produtoId !== id));
   const totalCompra = carrinho.reduce((acc, item) => acc + item.subtotal, 0);
 
-  // --- O CORAÇÃO DO SISTEMA: FINALIZAR COMPRA ---
+  // --- FINALIZAR COMPRA ---
   const finalizarCompra = async () => {
     if (!fornecedorSelecionado || carrinho.length === 0) return alert("Selecione fornecedor e adicione itens!");
     const userId = auth.currentUser?.uid as string;
@@ -84,14 +84,12 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
     const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
     
     try {
-      // 1. ATUALIZA O ESTOQUE DOS PRODUTOS
       for (const item of carrinho) {
         const prodAtual = produtos.find(p => p.id === item.produtoId);
         const novoEstoque = (prodAtual?.estoque || 0) + item.quantidade;
         await updateDoc(doc(db, 'usuarios', userId, 'produtos', item.produtoId), { estoque: novoEstoque });
       }
 
-      // 2. SALVA O HISTÓRICO DA COMPRA
       await addDoc(collection(db, 'usuarios', userId, 'compras'), {
         fornecedorId: fornecedorSelecionado,
         fornecedorNome: forn?.nome || 'Desconhecido',
@@ -103,7 +101,6 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
         statusPagamento: 'pendente'
       });
 
-      // 3. LANÇA A CONTA A PAGAR NO FLUXO DE CAIXA AUTOMATICAMENTE
       await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
         tipo: 'despesa',
         descricao: `Material: ${forn?.nome} ${numeroVale ? `(Vale: ${numeroVale})` : ''}`,
@@ -113,9 +110,8 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
         categoria: 'Fornecedores'
       });
 
-      alert("Show! Estoque atualizado e fatura lançada no Contas a Pagar com sucesso.");
+      alert("Entrada registrada! Estoque atualizado e fatura lançada no Contas a Pagar.");
       
-      // Limpa a tela para a próxima compra
       setCarrinho([]); 
       setFornecedorSelecionado('');
       setNumeroVale('');
@@ -131,68 +127,68 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
       </header>
 
       <div className="flex gap-2 border-b border-slate-200 pb-px">
-        <button onClick={() => setAbaAtiva('nova_compra')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_compra' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🛒 Lançar Entrada (Rápido)</button>
-        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>📋 Cadastrar Fornecedores</button>
+        <button onClick={() => setAbaAtiva('nova_compra')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_compra' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🛒 Lançar Entrada (Rápido)</button>
+        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>📋 Cadastrar Fornecedores</button>
       </div>
 
       {abaAtiva === 'nova_compra' && (
-        <div className="flex flex-col lg:flex-row gap-6 items-start w-full">
+        // ESTRUTURA BLINDADA COM CSS GRID
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full">
           
-          {/* COLUNA ESQUERDA: Formulários e Carrinho */}
-          <div className="w-full lg:w-2/3 space-y-6">
+          {/* COLUNA ESQUERDA: Formulários e Carrinho (Ocupa 7 ou 8 colunas de 12) */}
+          <div className="lg:col-span-7 xl:col-span-8 space-y-6 min-w-0">
             
             {/* Bloco 1: Fornecedor e Produto */}
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">1. Dados Básicos</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Fornecedor</label>
-                  <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500">
+                  <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 truncate">
                     <option value="">Selecione quem está vendendo...</option>
                     {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                   </select>
                 </div>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Buscar Insumo / Produto</label>
                   <div className="flex gap-2">
-                    <select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500">
+                    <select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 min-w-0 px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:ring-2 focus:ring-blue-500 truncate">
                       <option value="">Buscar no estoque...</option>
                       {produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}
                     </select>
-                    <button onClick={adicionarAoCarrinho} className="px-6 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xl shadow-md transition-colors">+</button>
+                    <button onClick={adicionarAoCarrinho} className="shrink-0 px-6 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xl shadow-md transition-colors">+</button>
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Bloco 2: Itens do Carrinho */}
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200 min-h-[250px]">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200 min-h-[250px]">
               <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">2. Itens da Entrada (Quantidade e Valor Pago)</h3>
               {carrinho.length === 0 ? (
                  <div className="flex flex-col items-center justify-center h-32 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50"><span className="text-3xl mb-2">🛒</span><p className="font-medium text-sm">Adicione produtos acima para começar a preencher.</p></div>
               ) : (
                 <div className="space-y-4">
                   {carrinho.map(item => (
-                    <div key={item.produtoId} className="flex flex-col md:flex-row md:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm relative pr-12">
-                      <div className="flex-1"><p className="font-bold text-slate-800 text-base">{item.nome}</p></div>
+                    <div key={item.produtoId} className="flex flex-col xl:flex-row xl:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm relative pr-10 xl:pr-14">
+                      <div className="flex-1 min-w-0"><p className="font-bold text-slate-800 text-base truncate">{item.nome}</p></div>
                       
-                      <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto">
-                        <div className="flex flex-col w-24">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Qtd. Comprada</span>
-                          <input type="number" min="1" value={item.quantidade} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'quantidade', parseInt(e.target.value) || 0)} className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-black text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full xl:w-auto">
+                        <div className="flex flex-col w-20 sm:w-24 shrink-0">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Qtd.</span>
+                          <input type="number" min="1" value={item.quantidade} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'quantidade', parseInt(e.target.value) || 0)} className="w-full px-2 sm:px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-black text-sm sm:text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
                         </div>
-                        <div className="flex flex-col w-32">
+                        <div className="flex flex-col w-28 sm:w-32 shrink-0">
                           <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Custo Un. (R$)</span>
-                          <input type="number" step="0.01" value={item.custoUnitario} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'custoUnitario', parseFloat(e.target.value) || 0)} className="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-bold text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
+                          <input type="number" step="0.01" value={item.custoUnitario} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'custoUnitario', parseFloat(e.target.value) || 0)} className="w-full px-2 sm:px-3 py-2.5 bg-white border border-slate-300 rounded-xl text-center font-bold text-sm sm:text-lg outline-none focus:ring-2 focus:ring-blue-500 shadow-inner" />
                         </div>
-                        <div className="flex flex-col text-right min-w-[100px] ml-auto md:ml-4">
+                        <div className="flex flex-col text-right min-w-[90px] ml-auto">
                           <span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subtotal</span>
-                          <span className="font-black text-slate-800 text-xl">R$ {item.subtotal.toFixed(2)}</span>
+                          <span className="font-black text-slate-800 text-lg sm:text-xl">R$ {item.subtotal.toFixed(2)}</span>
                         </div>
                       </div>
                       
-                      {/* Botão de Excluir Absoluto no Canto */}
-                      <button onClick={() => removerDoCarrinho(item.produtoId)} className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center bg-rose-100 text-rose-600 rounded-lg font-bold hover:bg-rose-200 transition-colors">✕</button>
+                      <button onClick={() => removerDoCarrinho(item.produtoId)} className="absolute right-2 sm:right-3 top-4 xl:top-1/2 xl:-translate-y-1/2 w-8 h-8 flex items-center justify-center bg-rose-100 text-rose-600 rounded-lg font-bold hover:bg-rose-200 transition-colors">✕</button>
                     </div>
                   ))}
                 </div>
@@ -200,15 +196,15 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
             </div>
 
             {/* Bloco 3: Dados de Pagamento */}
-            <div className="bg-white p-6 md:p-8 rounded-2xl shadow-sm border border-slate-200">
+            <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3 flex items-center gap-2"><span>💳</span> 3. Informações de Pagamento</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
+                <div className="min-w-0">
                   <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Número do Vale / Nota</label>
-                  <input type="text" placeholder="Ex: Vale 140 / NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" />
+                  <input type="text" placeholder="Ex: Vale 140 / NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 truncate" />
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Data Combinada p/ Pagamento</label>
+                <div className="min-w-0">
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Data p/ Pagamento</label>
                   <input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-500" />
                 </div>
               </div>
@@ -216,13 +212,13 @@ export default function Fornecedores({ fornecedores, produtos }: FornecedoresPro
 
           </div>
 
-          {/* COLUNA DIREITA: Resumo Financeiro (Sem Sobreposição) */}
-          <div className="w-full lg:w-1/3 bg-slate-900 p-6 rounded-2xl shadow-xl h-fit sticky top-6 text-white border border-slate-800">
+          {/* COLUNA DIREITA: Resumo Financeiro (Ocupa 5 ou 4 colunas de 12) */}
+          <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 p-6 rounded-2xl shadow-xl h-fit lg:sticky lg:top-6 text-white border border-slate-800 w-full min-w-0">
             <h3 className="text-xl font-black mb-6 border-b border-slate-700 pb-4">Resumo Final</h3>
             
             <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 mb-6 shadow-inner text-center">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Valor Total a Pagar</p>
-              <p className="text-4xl font-black text-emerald-400">R$ {totalCompra.toFixed(2)}</p>
+              <p className="text-4xl font-black text-emerald-400 truncate">R$ {totalCompra.toFixed(2)}</p>
             </div>
 
             <div className="space-y-3 mb-8 bg-slate-950/50 p-4 rounded-xl border border-slate-800/50">
