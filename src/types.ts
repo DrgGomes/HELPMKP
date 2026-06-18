@@ -23,7 +23,6 @@ export interface CustoPadrao {
   icone: string;
 }
 
-// NOVA REGRA: Categorias customizáveis
 export interface Categoria {
   id: string;
   nome: string;
@@ -41,4 +40,30 @@ export interface Produto {
   tipoLucro: 'porcentagem' | 'reais';
   valorLucro: number;
   isKit?: boolean;
+}
+
+// NOVAS REGRAS: FORNECEDORES E COMPRAS (FLUXO DE CAIXA)
+export interface Fornecedor {
+  id: string;
+  nome: string;
+  contato: string;
+  categoriaInsumo: string; // Ex: Couro, Borracha, Peças Metálicas, Embalagens
+}
+
+export interface ItemCompra {
+  produtoId: string;
+  nome: string;
+  quantidade: number;
+  custoUnitario: number;
+  subtotal: number;
+}
+
+export interface Compra {
+  id: string;
+  fornecedorId: string;
+  fornecedorNome: string;
+  dataCompra: string;
+  itens: ItemCompra[];
+  valorTotal: number;
+  statusPagamento: 'pago' | 'pendente';
 }
