@@ -142,7 +142,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
                   <div className="space-y-3">
                     {forn.faturas.map(fat => {
                       const isAtrasado = fat.dataVencimento < new Date().toISOString().split('T')[0];
-                      const compData = compras.find(c => c.id === fat.compraId); // Acha a compra pra ver o que tem no Vale
+                      // ERRO CORRIGIDO AQUI: Variável com o nome unificado 'compraData'
+                      const compraData = compras.find(c => c.id === fat.compraId); 
 
                       return (
                         <div key={fat.id} className={`p-4 rounded-xl border flex flex-col xl:flex-row justify-between xl:items-center gap-4 ${isAtrasado ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200 shadow-sm'}`}>
