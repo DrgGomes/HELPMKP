@@ -13,9 +13,11 @@ export interface LancamentoFinanceiro {
   descricao: string; 
   valor: number; 
   dataVencimento: string; 
-  dataLancamento?: string; // NOVO: Data que o vale foi emitido/lançado
+  dataLancamento?: string; 
   status: 'pago' | 'pendente'; 
   categoria: string;
   fornecedorId?: string; 
   compraId?: string;     
+  recorrente?: boolean;         // NOVO: Identifica se é uma conta repetida
+  grupoRecorrenciaId?: string;  // NOVO: Vincula todas as parcelas da série
 }
