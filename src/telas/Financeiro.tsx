@@ -144,7 +144,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             </button>
           </div>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 text-xs">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-7 gap-3 text-xs">
             <div className="lg:col-span-2">
               <label className="block font-bold text-slate-500 uppercase mb-1">Buscar Item / Categoria</label>
               <input type="text" placeholder="Ex: Energia, Compra..." value={buscaDescricao} onChange={(e) => setBuscaDescricao(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold outline-none" />
@@ -153,9 +153,19 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
               <label className="block font-bold text-slate-500 uppercase mb-1">Mês</label>
               <select value={mesFiltro} onChange={(e) => setMesFiltro(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select>
             </div>
+            {/* CORRIGIDO: Select do Ano recolocado! */}
+            <div>
+              <label className="block font-bold text-slate-500 uppercase mb-1">Ano</label>
+              <select value={anoFiltro} onChange={(e) => setAnoFiltro(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none">
+                <option value={0}>Todos</option>
+                <option value={2025}>2025</option>
+                <option value={2026}>2026</option>
+                <option value={2027}>2027</option>
+              </select>
+            </div>
             <div>
               <label className="block font-bold text-slate-500 uppercase mb-1">Status</label>
-              <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as any)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value="todos">Todos</option><option value="pendente">Apenas Pendentes</option><option value="pago">Apenas Pagos</option></select>
+              <select value={statusFiltro} onChange={(e) => setStatusFiltro(e.target.value as any)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="pago">Pagos</option></select>
             </div>
             <div>
               <label className="block font-bold text-slate-500 uppercase mb-1">Tipo</label>
@@ -163,7 +173,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             </div>
             <div>
               <label className="block font-bold text-slate-500 uppercase mb-1">Fornecedor</label>
-              <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer Fornecedor</option><option value="">Contas Avulsas (Sem Fornecedor)</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select>
+              <select value={fornecedorFiltro} onChange={(e) => setFornecedorFiltro(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer Fornecedor</option><option value="">Avulsos (S/ Forn.)</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select>
             </div>
           </div>
         </div>
@@ -400,7 +410,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
             <div className="p-6 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4 mb-6 border-b border-slate-200 pb-6">
                 <div><p className="text-[10px] font-bold text-slate-400 uppercase">Fornecedor</p><p className="font-black text-slate-800 text-lg">{compraModal.fornecedorNome}</p></div>
-                <div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase">NF / Vale</p><p className="font-black text-slate-800 text-lg">{compraModal.numeroVale || 'N/A'}</p></div>
+                <div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase">NF / Vale Relacionado</p><p className="font-black text-slate-800 text-lg">{compraModal.numeroVale || 'N/A'}</p></div>
               </div>
               <h4 className="font-bold text-slate-400 uppercase tracking-widest text-[10px] mb-3">O que foi comprado neste vale:</h4>
               <div className="space-y-2 mb-6">
