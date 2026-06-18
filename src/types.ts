@@ -16,12 +16,17 @@ export interface CustoAdicional {
   valor: number;
 }
 
-// NOVA REGRA: Modelo para salvar os custos globais no banco
 export interface CustoPadrao {
   id: string;
   nome: string;
   valor: number;
   icone: string;
+}
+
+// NOVA REGRA: Categorias customizáveis
+export interface Categoria {
+  id: string;
+  nome: string;
 }
 
 export interface Produto {

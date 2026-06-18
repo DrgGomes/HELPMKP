@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { doc, setDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import type { Produto, Plataforma, CustoAdicional, CustoPadrao } from '../types';
+import type { Produto, Plataforma, CustoAdicional, CustoPadrao, Categoria } from '../types';
 
 interface ProdutosProps {
   telaAtiva: string;
@@ -9,19 +9,21 @@ interface ProdutosProps {
   produtos: Produto[];
   plataformas: Plataforma[];
   custosPadrao: CustoPadrao[];
+  categorias: Categoria[];
 }
 
-const CATEGORIAS_PADRAO = ['Calçados', 'Auto Peças', 'Vestuário', 'Eletrônicos', 'Casa e Decoração', 'Acessórios', 'Kits', 'Outros'];
-
-export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataformas, custosPadrao }: ProdutosProps) {
+export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataformas, custosPadrao, categorias }: ProdutosProps) {
   const [buscaProduto, setBuscaProduto] = useState('');
   const [filtroPlataforma, setFiltroPlataforma] = useState('todas');
   const [filtroCategoria, setFiltroCategoria] = useState('todas');
   
+  // Garantindo que sempre tenha uma categoria para selecionar no formulário
+  const listaCategorias = categorias.length > 0 ? categorias.map(c => c.nome).sort() : ['Geral'];
+
   const [idProdEdicao, setIdProdEdicao] = useState<string | null>(null);
   const [fotoProd, setFotoProd] = useState('');
   const [tituloProd, setTituloProd] = useState('');
-  const [categoriaProd, setCategoriaProd] = useState(CATEGORIAS_PADRAO[0]);
+  const [categoriaProd, setCategoriaProd] = useState(listaCategorias[0]);
   const [custoBaseProd, setCustoBaseProd] = useState('');
   const [custoAdsProd, setCustoAdsProd] = useState('0');
   const [custosAdicionais, setCustosAdicionais] = useState<CustoAdicional[]>([]);
@@ -31,17 +33,12 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const adicionarCustoExtra = () => setCustosAdicionais([...custosAdicionais, { id: Date.now().toString(), nome: '', valor: 0 }]);
   
   const adicionarCustoRapido = (padrao: CustoPadrao) => {
-    setCustosAdicionais([...custosAdicionais, { 
-      id: Date.now().toString() + Math.random().toString(), 
-      nome: padrao.nome, 
-      valor: padrao.valor 
-    }]);
+    setCustosAdicionais([...custosAdicionais, { id: Date.now().toString() + Math.random().toString(), nome: padrao.nome, valor: padrao.valor }]);
   };
 
   const atualizarCustoExtra = (id: string, campo: 'nome' | 'valor', novoValor: string) => {
     setCustosAdicionais(custosAdicionais.map(c => c.id === id ? { ...c, [campo]: campo === 'valor' ? parseFloat(novoValor) || 0 : novoValor } : c));
   };
-  
   const removerCustoExtra = (id: string) => setCustosAdicionais(custosAdicionais.filter(c => c.id !== id));
 
   const calcularCustoTotalAoVivo = () => {
@@ -53,16 +50,11 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const lidarSalvarProduto = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!tituloProd || !custoBaseProd || !valorLucro) return;
-
-    // BLINDAGEM 1: Garantindo que o userId é uma string absoluta
     const userId = auth.currentUser?.uid as string;
     if (!userId) return;
 
     const baseFormatada = parseFloat(custoBaseProd);
-    const extrasFormatados: CustoAdicional[] = custosAdicionais
-      .filter(c => c.nome.trim() !== '')
-      .map(c => ({ id: c.id, nome: c.nome, valor: parseFloat(c.valor.toString()) || 0 }));
-    
+    const extrasFormatados: CustoAdicional[] = custosAdicionais.filter(c => c.nome.trim() !== '').map(c => ({ id: c.id, nome: c.nome, valor: parseFloat(c.valor.toString()) || 0 }));
     const total = baseFormatada + extrasFormatados.reduce((acc, curr) => acc + curr.valor, 0);
 
     const dadosProduto: Partial<Produto> = {
@@ -78,24 +70,18 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     };
 
     try {
-      if (idProdEdicao) {
-        // Garantindo que idProdEdicao também é interpretado como string
-        await setDoc(doc(db, 'usuarios', userId, 'produtos', idProdEdicao as string), dadosProduto);
-      } else {
-        await addDoc(collection(db, 'usuarios', userId, 'produtos'), dadosProduto);
-      }
+      if (idProdEdicao) await setDoc(doc(db, 'usuarios', userId, 'produtos', idProdEdicao as string), dadosProduto);
+      else await addDoc(collection(db, 'usuarios', userId, 'produtos'), dadosProduto);
       limparFormProduto();
       setTelaAtiva('produtos_lista');
-    } catch (error) {
-      console.error("Erro ao salvar produto:", error);
-    }
+    } catch (error) { console.error(error); }
   };
 
   const iniciarEdicaoProduto = (prod: Produto) => {
     setIdProdEdicao(prod.id);
     setFotoProd(prod.foto.includes('ui-avatars') ? '' : prod.foto);
     setTituloProd(prod.titulo);
-    setCategoriaProd(prod.categoria || CATEGORIAS_PADRAO[0]);
+    setCategoriaProd(prod.categoria || listaCategorias[0]);
     setCustoBaseProd(prod.custoBase.toString());
     setCustoAdsProd(prod.custoAds?.toString() || '0');
     setCustosAdicionais(prod.custosAdicionais || []);
@@ -106,7 +92,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   };
 
   const duplicarProduto = async (prod: Produto) => {
-    // BLINDAGEM 2
     const userId = auth.currentUser?.uid as string;
     if (!userId) return;
     const { id, ...dadosSemId } = prod;
@@ -114,17 +99,13 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   };
 
   const limparFormProduto = () => {
-    setIdProdEdicao(null); setFotoProd(''); setTituloProd(''); setCategoriaProd(CATEGORIAS_PADRAO[0]); 
+    setIdProdEdicao(null); setFotoProd(''); setTituloProd(''); setCategoriaProd(listaCategorias[0]); 
     setCustoBaseProd(''); setCustoAdsProd('0'); setCustosAdicionais([]); setTipoLucro('reais'); setValorLucro('');
   };
 
   const lidarExcluirProduto = async (id: string) => {
-    if (window.confirm("Excluir este produto?")) {
-      // BLINDAGEM 3
-      const userId = auth.currentUser?.uid as string;
-      if (!userId) return;
-      await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
-    }
+    const userId = auth.currentUser?.uid as string;
+    if (userId && window.confirm("Excluir este produto?")) await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
   };
 
   const produtosFiltrados = useMemo(() => {
@@ -159,12 +140,12 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div className="md:col-span-2">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Título do Produto</label>
-                <input type="text" required value={tituloProd} onChange={(e) => setTituloProd(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium" placeholder="Ex: Tênis Esportivo / Par de Amortecedores" />
+                <input type="text" required value={tituloProd} onChange={(e) => setTituloProd(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Categoria</label>
                 <select value={categoriaProd} onChange={(e) => setCategoriaProd(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 font-medium text-slate-700">
-                  {CATEGORIAS_PADRAO.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                  {listaCategorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                 </select>
               </div>
               <div className="md:col-span-3">
@@ -188,9 +169,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                 </div>
                 
                 <div className="flex flex-wrap gap-2 mb-5">
-                  {custosPadrao.length === 0 ? (
-                    <span className="text-xs text-slate-400 italic">Cadastre atalhos no menu "Custos Variáveis"</span>
-                  ) : (
+                  {custosPadrao.length === 0 ? <span className="text-xs text-slate-400 italic">Nenhum atalho criado.</span> : (
                     custosPadrao.map((padrao) => (
                       <button key={padrao.id} type="button" onClick={() => adicionarCustoRapido(padrao)} className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:border-blue-500 hover:text-blue-600 transition-all flex items-center gap-1.5 shadow-sm">
                         <span>{padrao.icone}</span> {padrao.nome} (+R$ {padrao.valor.toFixed(2)})
@@ -236,15 +215,15 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   return (
     <div className="animate-fade-in">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 md:mb-10">
-        <div><h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Meus Produtos</h2><p className="text-slate-500 mt-1 text-sm">Gerencie seu catálogo e visualize os preços.</p></div>
+        <div><h2 className="text-2xl md:text-3xl font-black text-slate-800 tracking-tight">Meus Produtos</h2></div>
         <button onClick={() => { setTelaAtiva('produto_cadastro'); limparFormProduto(); }} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg flex items-center gap-2"><span>➕</span> Novo Produto</button>
       </header>
 
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
         <div className="flex-1 relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🔍</span><input type="text" placeholder="Buscar por título..." value={buscaProduto} onChange={(e) => setBuscaProduto(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-sm" /></div>
         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
-          <div className="relative min-w-[200px]"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">📂</span><select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm text-slate-700 appearance-none"><option value="todas">Todas as Categorias</option>{CATEGORIAS_PADRAO.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
-          <div className="relative min-w-[200px]"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🛍️</span><select value={filtroPlataforma} onChange={(e) => setFiltroPlataforma(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none font-bold text-sm text-slate-700 appearance-none"><option value="todas">Ver todas plataformas</option>{plataformas.map(p => <option key={p.id} value={p.id}>Apenas {p.nome}</option>)}</select></div>
+          <div className="relative min-w-[200px]"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">📂</span><select value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 outline-none font-bold text-sm text-slate-700 appearance-none"><option value="todas">Todas as Categorias</option>{listaCategorias.map(cat => <option key={cat} value={cat}>{cat}</option>)}</select></div>
+          <div className="relative min-w-[200px]"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">🛍️</span><select value={filtroPlataforma} onChange={(e) => setFiltroPlataforma(e.target.value)} className="w-full pl-11 pr-4 py-3 border border-slate-200 rounded-xl bg-slate-50 outline-none font-bold text-sm text-slate-700 appearance-none"><option value="todas">Ver todas plataformas</option>{plataformas.map(p => <option key={p.id} value={p.id}>Apenas {p.nome}</option>)}</select></div>
         </div>
       </div>
 
@@ -255,24 +234,41 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
           {produtosFiltrados.map((prod) => (
             <div key={prod.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full hover:shadow-md transition-all group relative overflow-hidden">
               <div className="absolute top-4 right-4 z-10"><span className="px-3 py-1 bg-slate-100 border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-widest rounded-full">{prod.categoria || 'Sem categoria'}</span></div>
+              
               <div className="flex justify-between items-start mb-5 pb-5 border-b border-slate-100 mt-2">
                 <div className="flex gap-4 items-center w-full pr-12">
                   <img src={prod.foto} alt="" onError={(e) => e.currentTarget.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(prod.titulo)}&background=e2e8f0`} className="w-20 h-20 rounded-xl object-cover bg-slate-50 border border-slate-200 flex-shrink-0" />
                   <div className="min-w-0 flex-1">
                     <h4 className="font-black text-slate-800 text-lg leading-tight mb-2 truncate" title={prod.titulo}>{prod.titulo}</h4>
+                    
+                    {/* BAdges Principais */}
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-bold">Custo: R$ {prod.custoTotal.toFixed(2)}</span>
+                      <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md font-bold">Custo Base: R$ {prod.custoTotal.toFixed(2)}</span>
                       {(prod.custoAds || 0) > 0 && <span className="bg-purple-100 text-purple-700 px-2.5 py-1 rounded-md font-bold">Ads: R$ {(prod.custoAds || 0).toFixed(2)}</span>}
                       <span className="bg-emerald-100 text-emerald-700 px-2.5 py-1 rounded-md font-black">Meta: {prod.tipoLucro === 'reais' ? `R$ ${prod.valorLucro.toFixed(2)}` : `${prod.valorLucro}%`}</span>
                     </div>
+
+                    {/* VIZUALIZAÇÃO DOS CUSTOS VARIÁVEIS (O que você pediu!) */}
+                    {prod.custosAdicionais && prod.custosAdicionais.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5 border-t border-slate-100 pt-3">
+                        {prod.custosAdicionais.map((c, i) => (
+                          <span key={i} className="text-[10px] font-bold bg-slate-50 border border-slate-200 text-slate-500 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                            {c.nome}: <strong className="text-slate-700">R$ {c.valor.toFixed(2)}</strong>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
+
               <div className="flex gap-2 mb-4 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                 <button onClick={() => iniciarEdicaoProduto(prod)} className="flex-1 py-2 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold border border-slate-200 hover:bg-slate-100">✏️ Editar Detalhes</button>
                 <button onClick={() => duplicarProduto(prod)} className="w-10 flex items-center justify-center bg-blue-50 text-blue-600 rounded-xl border border-blue-100 hover:bg-blue-100">📄</button>
                 <button onClick={() => lidarExcluirProduto(prod.id)} className="w-10 flex items-center justify-center bg-rose-50 text-rose-600 rounded-xl border border-rose-100 hover:bg-rose-100">🗑️</button>
               </div>
+
               <div className="mt-auto bg-slate-50 -mx-6 -mb-6 p-6 rounded-b-2xl border-t border-slate-100">
                 <h5 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Preço Sugerido por Marketplace:</h5>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
