@@ -28,11 +28,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
 
   // --- ESTADOS DE RELATÓRIO E FILTROS ---
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
-  const [buscaDescricao, setBuscaDescricao] = useState('');
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
   const anoAtual = dataAtual.getFullYear();
 
+  const [buscaDescricao, setBuscaDescricao] = useState('');
   const [mesFiltro, setMesFiltro] = useState<number>(mesAtual);
   const [anoFiltro, setAnoFiltro] = useState<number>(anoAtual);
   const [statusFiltro, setStatusFiltro] = useState<'todos' | 'pendente' | 'pago'>('todos');
@@ -47,7 +47,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
   const [draftTipo, setDraftTipo] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [draftFornecedor, setDraftFornecedor] = useState('todos');
 
-  const/n  aplicarFiltros = () => {
+  const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
+
+  const [compraModal, setCompraModal] = useState<Compra | null>(null);
+
+  const aplicarFiltros = () => {
     setBuscaDescricao(draftBusca); setMesFiltro(draftMes); setAnoFiltro(draftAno);
     setStatusFiltro(draftStatus); setTipoFiltro(draftTipo); setFornecedorFiltro(draftFornecedor);
   };
@@ -68,18 +72,15 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     const fId = tipo === 'despesa' && fornSelecionado ? fornSelecionado : null;
 
     try {
-      // Se for uma edição comum ou NÃO for recorrente, faz o salvamento unitário clássico
       if (idEdicao || !isRecorrente) {
         const dados = { tipo, descricao, valor: valorNum, dataVencimento, dataLancamento, categoria, fornecedorId: fId };
         if (idEdicao) await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', idEdicao), dados);
         else await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), { ...dados, status: 'pendente' });
       } else {
-        // MOTOR DE DUPLICIDADE/RECORRÊNCIA CONTINUA (Cria parcelas pros meses seguintes)
         const qtdMeses = Math.max(1, parseInt(mesesRepetir) || 1);
         const grupoId = 'REC-' + Date.now();
 
         for (let i = 0; i < qtdMeses; i++) {
-          // Calcula data de vencimento empurrando os meses
           const objVenc = new Date(dataVencimento + 'T12:00:00');
           objVenc.setMonth(objVenc.getMonth() + i);
           
@@ -109,7 +110,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     setIdEdicao(lanc.id); setTipo(lanc.tipo); setDescricao(lanc.descricao);
     setValor(lanc.valor.toString()); setDataLancamento(lanc.dataLancamento || lanc.dataVencimento);
     setDataVencimento(lanc.dataVencimento); setCategoria(lanc.categoria); setFornSelecionado(lanc.fornecedorId || '');
-    setIsRecorrente(false); // Desativa no modo edição para evitar bugs
+    setIsRecorrente(false); 
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -145,21 +146,46 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
     }
   };
 
+  const excluirValeInteiro = async (compraId: string) => {
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    if (window.confirm("⚠️ ATENÇÃO: Isso excluirá o Vale de Compra e a dívida vinculada a ele. Deseja continuar?")) {
+      await deleteDoc(doc(db, 'usuarios', userId, 'compras', compraId));
+      const lancVinculado = lancamentos.find(l => l.compraId === compraId);
+      if (lancVinculado) await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lancVinculado.id));
+      setCompraModal(null);
+    }
+  };
+
   const adiarVencimento = async (id: string, dias: number, dataAtualStr: string) => {
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     const dataObj = new Date(dataAtualStr + 'T12:00:00'); dataObj.setDate(dataObj.getDate() + dias);
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- RELATÓRIO DE FORNECEDORES ---
+  // --- RELATÓRIO DE FORNECEDORES E ORDENAÇÃO ---
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
     if (fornecedorFiltro !== 'todos' && fornecedorFiltro !== '') listaBase = fornecedores.filter(f => f.id === fornecedorFiltro);
+    
     return listaBase.map(f => {
       const faturasPendentes = lancamentos.filter(l => l.fornecedorId === f.id && l.status === 'pendente' && l.tipo === 'despesa');
-      return { ...f, faturas: faturasPendentes.sort((a,b) => new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime()), totalDevendo: faturasPendentes.reduce((a, b) => a + b.valor, 0) };
+      const totalDevendo = faturasPendentes.reduce((a, b) => a + b.valor, 0);
+      
+      const faturasOrdenadas = faturasPendentes.sort((a, b) => {
+        if (ordemFaturas === 'vencimento_asc') return new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime();
+        if (ordemFaturas === 'emissao_desc') {
+          const dA = a.dataLancamento ? new Date(a.dataLancamento).getTime() : 0;
+          const dB = b.dataLancamento ? new Date(b.dataLancamento).getTime() : 0;
+          return dB - dA;
+        }
+        if (ordemFaturas === 'valor_desc') return b.valor - a.valor;
+        if (ordemFaturas === 'valor_asc') return a.valor - b.valor;
+        return 0;
+      });
+
+      return { ...f, faturas: faturasOrdenadas, totalDevendo };
     }).filter(f => f.totalDevendo > 0).sort((a, b) => b.totalDevendo - a.totalDevendo);
-  }, [fornecedores, lancamentos, fornecedorFiltro]);
+  }, [fornecedores, lancamentos, fornecedorFiltro, ordemFaturas]);
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
