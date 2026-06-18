@@ -16,7 +16,7 @@ import Financeiro from './telas/Financeiro';
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
   const [carregandoAuth, setCarregandoAuth] = useState(true);
-  const [telaAtiva, setTelaAtiva] = useState('financeiro');
+  const [telaAtiva, setTelaAtiva] = useState('dashboard');
   const [menuAberto, setMenuAberto] = useState(false);
   const [emailUsuario, setEmailUsuario] = useState('');
   
@@ -82,11 +82,11 @@ export default function App() {
       </div>
       <div className="flex-1 overflow-auto bg-slate-50/50">
         <div className="max-w-7xl mx-auto w-full p-5 md:p-8 lg:p-10">
-          {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} />}
           
-          {/* ATUALIZADO: Passando todas as listas para o Financeiro */}
+          {/* ATUALIZADO: Passando setTelaAtiva pro Dashboard */}
+          {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} setTelaAtiva={setTelaAtiva} />}
+          
           {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} />}
-          
           {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
           {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} produtos={produtos} plataformas={plataformas} custosPadrao={custosPadrao} categorias={categorias} />}
           {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}

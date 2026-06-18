@@ -18,24 +18,23 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
-  // Estados Carrinho (Ordem de Compra)
+  // Estados Ordem de Compra
+  const [idOrdemEdicao, setIdOrdemEdicao] = useState<string | null>(null); // NOVO: Para saber se está editando
   const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState('');
   const [numeroVale, setNumeroVale] = useState('');
-  // NOVO: Controle manual da data de compra
   const [dataCompra, setDataCompra] = useState(new Date().toISOString().split('T')[0]);
   const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0]);
   const [ordemImpressao, setOrdemImpressao] = useState<Compra | null>(null);
 
-  // Estados Recebimento (Bipe)
+  // Estados Recebimento
   const [codigoBipe, setCodigoBipe] = useState('');
   const [ordemEmConferencia, setOrdemEmConferencia] = useState<Compra | null>(null);
   const [itensConferidos, setItensConferidos] = useState<Record<string, boolean>>({});
 
   const comprasPendentesDeRecebimento = compras.filter(c => c.statusChegada === 'aguardando');
 
-  // --- LOGICA DE FORNECEDORES ---
   const lidarSalvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeForn) return;
     const userId = auth.currentUser?.uid as string; if (!userId) return;
@@ -49,7 +48,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id)); 
   };
 
-  // --- LOGICA DE GERAR ORDEM (ETAPA 1) ---
   const adicionarAoCarrinho = () => {
     if (!produtoSelecionado) return;
     const prodRef = produtos.find(p => p.id === produtoSelecionado);
@@ -70,31 +68,55 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
     
-    const codigoUnico = 'ORD-' + Math.floor(Date.now() / 1000);
+    // Se estiver editando, mantém o código antigo. Se não, gera novo.
+    const codigoUnico = idOrdemEdicao ? (compras.find(c => c.id === idOrdemEdicao)?.codigoOrdem || 'ORD') : 'ORD-' + Math.floor(Date.now() / 1000);
 
     const novaOrdem: Omit<Compra, 'id'> = {
-      codigoOrdem: codigoUnico,
-      statusChegada: 'aguardando',
-      fornecedorId: fornecedorSelecionado,
-      fornecedorNome: forn?.nome || 'Desconhecido',
-      dataCompra: dataCompra, // USA A DATA QUE VOCÊ ESCOLHEU
-      dataPagamento: dataPagamento,
-      numeroVale: numeroVale,
-      itens: carrinho,
-      valorTotal: totalCompra,
-      statusPagamento: 'pendente'
+      codigoOrdem: codigoUnico, statusChegada: 'aguardando', fornecedorId: fornecedorSelecionado,
+      fornecedorNome: forn?.nome || 'Desconhecido', dataCompra: dataCompra,
+      dataPagamento: dataPagamento, numeroVale: numeroVale, itens: carrinho,
+      valorTotal: totalCompra, statusPagamento: 'pendente'
     };
 
     try {
-      const docRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), novaOrdem);
-      setOrdemImpressao({ id: docRef.id, ...novaOrdem });
-      setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
-      setDataCompra(new Date().toISOString().split('T')[0]); // Reseta pro dia atual
-      alert(`Ordem ${codigoUnico} gerada com sucesso!`);
+      if (idOrdemEdicao) {
+        await updateDoc(doc(db, 'usuarios', userId, 'compras', idOrdemEdicao), novaOrdem);
+        setOrdemImpressao({ id: idOrdemEdicao, ...novaOrdem });
+        alert(`Ordem ${codigoUnico} atualizada com sucesso!`);
+      } else {
+        const docRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), novaOrdem);
+        setOrdemImpressao({ id: docRef.id, ...novaOrdem });
+        alert(`Ordem ${codigoUnico} gerada com sucesso!`);
+      }
+      setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale(''); setIdOrdemEdicao(null);
+      setDataCompra(new Date().toISOString().split('T')[0]); 
     } catch (error) { console.error(error); }
   };
 
-  // --- LOGICA DE RECEBER E BIPAR (ETAPA 2) ---
+  const cancelarEdicaoOrdem = () => {
+    setIdOrdemEdicao(null); setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
+    setDataCompra(new Date().toISOString().split('T')[0]); setDataPagamento(new Date().toISOString().split('T')[0]);
+  };
+
+  // --- NOVO: EDITAR E EXCLUIR ORDEM PENDENTE ---
+  const editarOrdemPendente = (ordem: Compra) => {
+    setAbaAtiva('nova_ordem');
+    setIdOrdemEdicao(ordem.id);
+    setFornecedorSelecionado(ordem.fornecedorId);
+    setCarrinho(ordem.itens);
+    setDataCompra(ordem.dataCompra.split('T')[0]);
+    setDataPagamento(ordem.dataPagamento || new Date().toISOString().split('T')[0]);
+    setNumeroVale(ordem.numeroVale || '');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const excluirOrdemPendente = async (id: string) => {
+    const userId = auth.currentUser?.uid as string;
+    if (userId && window.confirm("Excluir esta ordem pendente permanentemente?")) {
+      await deleteDoc(doc(db, 'usuarios', userId, 'compras', id));
+    }
+  };
+
   const lidarBipeEntrada = (e: React.FormEvent) => {
     e.preventDefault();
     const ordem = compras.find(c => c.codigoOrdem === codigoBipe.trim() || c.id === codigoBipe.trim());
@@ -127,6 +149,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         descricao: `Fatura ${ordemEmConferencia.codigoOrdem} (${ordemEmConferencia.fornecedorNome})`,
         valor: ordemEmConferencia.valorTotal,
         dataVencimento: ordemEmConferencia.dataPagamento || new Date().toISOString().split('T')[0],
+        dataLancamento: ordemEmConferencia.dataCompra.split('T')[0],
         status: 'pendente', categoria: 'Fornecedores',
         fornecedorId: ordemEmConferencia.fornecedorId, compraId: ordemEmConferencia.id
       });
@@ -147,7 +170,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       </header>
 
       <div className="flex gap-2 border-b border-slate-200 pb-px no-print">
-        <button onClick={() => setAbaAtiva('nova_ordem')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_ordem' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🛒 1. Gerar Ordem</button>
+        <button onClick={() => setAbaAtiva('nova_ordem')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_ordem' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🛒 1. {idOrdemEdicao ? 'Editar Ordem' : 'Gerar Ordem'}</button>
         <button onClick={() => setAbaAtiva('receber_bipe')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all flex items-center gap-2 ${abaAtiva === 'receber_bipe' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><span>⚡</span> 2. Receber Mercadoria</button>
         <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>📋 Fornecedores</button>
       </div>
@@ -156,8 +179,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         <>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full no-print">
             <div className="lg:col-span-7 xl:col-span-8 space-y-6 min-w-0">
-              <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Montar Pedido</h3>
+              <div className={`bg-white p-5 md:p-8 rounded-2xl shadow-sm border ${idOrdemEdicao ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-200'}`}>
+                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">{idOrdemEdicao ? '✏️ Editando Pedido Existente' : 'Montar Pedido'}</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="min-w-0">
                     <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Para qual Fornecedor?</label>
@@ -192,18 +215,9 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
                 <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Datas e Pagamento</h3>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div className="min-w-0">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Data da Compra</label>
-                    <input type="date" required value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Previsão Vale/NF</label>
-                    <input type="text" placeholder="Ex: NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vencimento a Pagar</label>
-                    <input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
-                  </div>
+                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Data da Compra</label><input type="date" required value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
+                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Previsão Vale/NF</label><input type="text" placeholder="Ex: NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
+                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vencimento a Pagar</label><input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
                 </div>
               </div>
             </div>
@@ -211,7 +225,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
             <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 p-6 rounded-2xl shadow-xl h-fit lg:sticky lg:top-6 text-white border border-slate-800 w-full min-w-0">
               <h3 className="text-xl font-black mb-6 border-b border-slate-700 pb-4">Ação</h3>
               <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 mb-6 text-center"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Total da Ordem</p><p className="text-4xl font-black text-blue-400 truncate">R$ {totalCompra.toFixed(2)}</p></div>
-              <button onClick={gerarOrdemDeCompra} disabled={carrinho.length === 0 || !fornecedorSelecionado} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-lg shadow-lg disabled:opacity-50">Emitir Ordem (PDF)</button>
+              <button onClick={gerarOrdemDeCompra} disabled={carrinho.length === 0 || !fornecedorSelecionado} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-lg shadow-lg disabled:opacity-50">{idOrdemEdicao ? 'Atualizar Pedido' : 'Emitir Ordem (PDF)'}</button>
+              {idOrdemEdicao && <button onClick={cancelarEdicaoOrdem} className="w-full mt-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition-colors">Cancelar Edição</button>}
               {ordemImpressao && <button onClick={() => window.print()} className="mt-4 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg">🖨️ Imprimir {ordemImpressao.codigoOrdem}</button>}
             </div>
           </div>
@@ -262,7 +277,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                 </form>
               </div>
 
-              {/* A VITRINE DE ORDENS PENDENTES (CLIQUE MANUAL) */}
+              {/* A VITRINE DE ORDENS PENDENTES (COM EDITAR E EXCLUIR) */}
               <div className="pt-6 border-t border-slate-200">
                 <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><span>🚚</span> Ordens Aguardando Chegada</h3>
                 <p className="text-sm text-slate-500 mb-6">Ou se preferir, selecione abaixo os pedidos que ainda estão no caminhão para conferir a carga:</p>
@@ -272,16 +287,23 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {comprasPendentesDeRecebimento.map(compra => (
-                      <div key={compra.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-300 transition-colors group">
-                        <div className="flex justify-between items-start mb-4">
+                      <div key={compra.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-300 transition-colors group relative overflow-hidden">
+                        
+                        {/* BOTÕES DE EDITAR E EXCLUIR NO CARD */}
+                        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick={() => editarOrdemPendente(compra)} className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200" title="Editar Ordem">✏️</button>
+                          <button onClick={() => excluirOrdemPendente(compra.id)} className="p-1.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100" title="Excluir Ordem">🗑️</button>
+                        </div>
+
+                        <div className="flex justify-between items-start mb-4 pr-16">
                           <div>
                             <span className="px-2 py-1 bg-amber-100 text-amber-700 font-black text-[10px] rounded uppercase">No Caminhão</span>
-                            <h4 className="font-black text-lg text-slate-800 mt-2">{compra.fornecedorNome}</h4>
+                            <h4 className="font-black text-lg text-slate-800 mt-2 truncate">{compra.fornecedorNome}</h4>
                           </div>
-                          <span className="font-black text-slate-800">R$ {compra.valorTotal.toFixed(2)}</span>
                         </div>
-                        <p className="text-xs font-mono font-bold text-slate-500 mb-4">{compra.codigoOrdem} • {compra.itens.length} itens</p>
-                        <button onClick={() => iniciarConferenciaManual(compra)} className="w-full py-2.5 bg-slate-100 hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-200 rounded-xl text-xs font-black uppercase tracking-wider transition-colors">
+                        <p className="text-xs font-mono font-bold text-slate-500 mb-4">{compra.codigoOrdem} • {compra.itens.length} itens <span className="float-right text-base text-slate-800">R$ {compra.valorTotal.toFixed(2)}</span></p>
+                        
+                        <button onClick={() => iniciarConferenciaManual(compra)} className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-200 rounded-xl text-xs font-black uppercase tracking-wider transition-colors">
                           📦 Iniciar Conferência
                         </button>
                       </div>
@@ -291,7 +313,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               </div>
             </>
           ) : (
-            // PAINEL DE CHECKLIST DA CONFERÊNCIA
             <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 animate-fade-in">
               <div className="flex justify-between items-end border-b border-slate-200 pb-5 mb-6">
                 <div>

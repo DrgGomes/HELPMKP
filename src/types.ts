@@ -7,15 +7,15 @@ export interface Fornecedor { id: string; nome: string; contato: string; categor
 export interface ItemCompra { produtoId: string; nome: string; quantidade: number; custoUnitario: number; subtotal: number; }
 export interface Compra { id: string; codigoOrdem: string; statusChegada: 'aguardando' | 'recebido'; fornecedorId: string; fornecedorNome: string; dataCompra: string; dataPagamento?: string; numeroVale?: string; itens: ItemCompra[]; valorTotal: number; statusPagamento: 'pago' | 'pendente'; }
 
-// ATUALIZADO: O Lançamento agora sabe exatamente de qual compra ele veio!
 export interface LancamentoFinanceiro { 
   id: string; 
   tipo: 'receita' | 'despesa'; 
   descricao: string; 
   valor: number; 
   dataVencimento: string; 
+  dataLancamento?: string; // NOVO: Data que o vale foi emitido/lançado
   status: 'pago' | 'pendente'; 
   categoria: string;
-  fornecedorId?: string; // NOVO: Pra filtrar devendo por fornecedor
-  compraId?: string;     // NOVO: Pra abrir o Vale e ver os itens
+  fornecedorId?: string; 
+  compraId?: string;     
 }
