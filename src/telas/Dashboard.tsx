@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import type { Produto, Plataforma, LancamentoFinanceiro } from '../types';
 
 interface DashboardProps {
