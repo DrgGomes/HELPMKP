@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { doc, setDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
@@ -9,21 +9,19 @@ interface FornecedoresProps {
   compras: Compra[];
 }
 
-export default function Fornecedores({ fornecedores, produtos, compras }: FornecedoresProps) {
+// CORREÇÃO: Tiramos a variável 'compras' daqui de cima, já que vamos usá-la na próxima fase (histórico)
+export default function Fornecedores({ fornecedores, produtos }: FornecedoresProps) {
   const [abaAtiva, setAbaAtiva] = useState<'lista' | 'nova_compra'>('nova_compra');
 
-  // --- ESTADOS DE FORNECEDORES ---
   const [idFornEdicao, setIdFornEdicao] = useState<string | null>(null);
   const [nomeForn, setNomeForn] = useState('');
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
-  // --- ESTADOS DO CARRINHO DE COMPRAS RÁPIDO ---
   const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState('');
 
-  // Salvar Fornecedor
   const lidarSalvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeForn) return;
@@ -43,13 +41,11 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     if (userId && window.confirm("Excluir este fornecedor?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id));
   };
 
-  // --- LÓGICA DO CARRINHO DE COMPRAS RÁPIDO ---
   const adicionarAoCarrinho = () => {
     if (!produtoSelecionado) return;
     const prodRef = produtos.find(p => p.id === produtoSelecionado);
     if (!prodRef) return;
     
-    // Se já estiver no carrinho, ignora
     if (carrinho.some(item => item.produtoId === prodRef.id)) return;
 
     setCarrinho([...carrinho, {
@@ -90,7 +86,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       dataCompra: new Date().toISOString(),
       itens: carrinho,
       valorTotal: totalCompra,
-      statusPagamento: 'pago' // Depois podemos criar a tela de Contas a Pagar
+      statusPagamento: 'pago' 
     };
 
     try {
@@ -110,7 +106,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         </div>
       </header>
 
-      {/* ABAS DE NAVEGAÇÃO */}
       <div className="flex gap-2 border-b border-slate-200 pb-px">
         <button onClick={() => setAbaAtiva('nova_compra')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_compra' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🛒 Lançar Entrada (Rápido)</button>
         <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>📋 Cadastros & Histórico</button>
@@ -119,7 +114,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       {abaAtiva === 'nova_compra' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-in">
           
-          {/* LADO ESQUERDO: SELEÇÃO E CARRINHO */}
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
               <h3 className="text-lg font-black text-slate-800 mb-4">1. Dados do Pedido</h3>
@@ -176,7 +170,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
             </div>
           </div>
 
-          {/* LADO DIREITO: FECHAMENTO */}
           <div className="bg-slate-900 p-6 rounded-2xl shadow-xl h-fit sticky top-6 text-white border border-slate-800">
             <h3 className="text-lg font-black text-white mb-6 border-b border-slate-700 pb-4">3. Resumo Financeiro</h3>
             
