@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { doc, setDoc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { LancamentoFinanceiro } from '../types';
 
