@@ -18,22 +18,24 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
-  // Estados Ordem de Compra
+  // Estados Carrinho (Ordem de Compra)
   const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
   const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
   const [produtoSelecionado, setProdutoSelecionado] = useState('');
   const [numeroVale, setNumeroVale] = useState('');
+  // NOVO: Controle manual da data de compra
+  const [dataCompra, setDataCompra] = useState(new Date().toISOString().split('T')[0]);
   const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0]);
   const [ordemImpressao, setOrdemImpressao] = useState<Compra | null>(null);
 
-  // Estados Recebimento
+  // Estados Recebimento (Bipe)
   const [codigoBipe, setCodigoBipe] = useState('');
   const [ordemEmConferencia, setOrdemEmConferencia] = useState<Compra | null>(null);
   const [itensConferidos, setItensConferidos] = useState<Record<string, boolean>>({});
 
-  // Filtra as ordens que estão presas no caminhão aguardando
   const comprasPendentesDeRecebimento = compras.filter(c => c.statusChegada === 'aguardando');
 
+  // --- LOGICA DE FORNECEDORES ---
   const lidarSalvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeForn) return;
     const userId = auth.currentUser?.uid as string; if (!userId) return;
@@ -47,6 +49,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id)); 
   };
 
+  // --- LOGICA DE GERAR ORDEM (ETAPA 1) ---
   const adicionarAoCarrinho = () => {
     if (!produtoSelecionado) return;
     const prodRef = produtos.find(p => p.id === produtoSelecionado);
@@ -70,20 +73,28 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     const codigoUnico = 'ORD-' + Math.floor(Date.now() / 1000);
 
     const novaOrdem: Omit<Compra, 'id'> = {
-      codigoOrdem: codigoUnico, statusChegada: 'aguardando', fornecedorId: fornecedorSelecionado,
-      fornecedorNome: forn?.nome || 'Desconhecido', dataCompra: new Date().toISOString(),
-      dataPagamento: dataPagamento, numeroVale: numeroVale, itens: carrinho,
-      valorTotal: totalCompra, statusPagamento: 'pendente'
+      codigoOrdem: codigoUnico,
+      statusChegada: 'aguardando',
+      fornecedorId: fornecedorSelecionado,
+      fornecedorNome: forn?.nome || 'Desconhecido',
+      dataCompra: dataCompra, // USA A DATA QUE VOCÊ ESCOLHEU
+      dataPagamento: dataPagamento,
+      numeroVale: numeroVale,
+      itens: carrinho,
+      valorTotal: totalCompra,
+      statusPagamento: 'pendente'
     };
 
     try {
       const docRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), novaOrdem);
       setOrdemImpressao({ id: docRef.id, ...novaOrdem });
       setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
+      setDataCompra(new Date().toISOString().split('T')[0]); // Reseta pro dia atual
       alert(`Ordem ${codigoUnico} gerada com sucesso!`);
     } catch (error) { console.error(error); }
   };
 
+  // --- LOGICA DE RECEBER E BIPAR (ETAPA 2) ---
   const lidarBipeEntrada = (e: React.FormEvent) => {
     e.preventDefault();
     const ordem = compras.find(c => c.codigoOrdem === codigoBipe.trim() || c.id === codigoBipe.trim());
@@ -93,7 +104,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     setOrdemEmConferencia(ordem); setItensConferidos({}); setCodigoBipe('');
   };
 
-  // Botão atalho para clicar no card sem bipar
   const iniciarConferenciaManual = (ordem: Compra) => {
     setOrdemEmConferencia(ordem);
     setItensConferidos({});
@@ -180,10 +190,20 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               </div>
 
               <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Pagamento</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="min-w-0"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Previsão do Vale/NF</label><input type="text" placeholder="Ex: NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
-                  <div className="min-w-0"><label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Vencimento Combinado</label><input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
+                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Datas e Pagamento</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Data da Compra</label>
+                    <input type="date" required value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Previsão Vale/NF</label>
+                    <input type="text" placeholder="Ex: NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  </div>
+                  <div className="min-w-0">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vencimento a Pagar</label>
+                    <input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+                  </div>
                 </div>
               </div>
             </div>
@@ -201,11 +221,16 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
             <div id="pdf-ordem" className="hidden print:block bg-white p-8 border border-slate-300">
               <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
                 <div><h1 className="text-3xl font-black text-slate-900 uppercase tracking-widest">Ordem de Compra</h1><p className="text-slate-500 font-bold mt-2">HelpMkp E-commerce</p></div>
-                <div className="text-right"><p className="text-2xl font-black text-slate-800">{ordemImpressao.codigoOrdem}</p><p className="text-sm font-bold text-slate-500">Data: {new Date(ordemImpressao.dataCompra).toLocaleDateString('pt-BR')}</p></div>
+                <div className="text-right"><p className="text-2xl font-black text-slate-800">{ordemImpressao.codigoOrdem}</p><p className="text-sm font-bold text-slate-500">Emitido: {new Date().toLocaleDateString('pt-BR')}</p></div>
               </div>
               <div className="mb-8 grid grid-cols-2 gap-8 text-sm">
                 <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg"><p className="font-bold text-slate-400 uppercase mb-1">Fornecedor</p><p className="font-black text-lg">{ordemImpressao.fornecedorNome}</p></div>
-                <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg text-right"><p className="font-bold text-slate-400 uppercase mb-1">Condição de Pagamento</p><p className="font-black text-lg">Vencimento: {ordemImpressao.dataPagamento?.split('-').reverse().join('/')}</p><p className="font-bold text-slate-600">NF/Vale: {ordemImpressao.numeroVale || 'A definir'}</p></div>
+                <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg text-right">
+                  <p className="font-bold text-slate-400 uppercase mb-1">Detalhes Fiscais</p>
+                  <p className="font-bold text-slate-600">Comprado em: {ordemImpressao.dataCompra.split('T')[0].split('-').reverse().join('/')}</p>
+                  <p className="font-bold text-slate-600">NF/Vale: {ordemImpressao.numeroVale || 'A definir'}</p>
+                  <p className="font-black text-lg text-rose-600 mt-1">Vencimento: {ordemImpressao.dataPagamento?.split('-').reverse().join('/')}</p>
+                </div>
               </div>
               <table className="w-full text-left text-sm border-collapse mb-12">
                 <thead><tr className="border-b border-slate-400 bg-slate-100 font-bold uppercase"><th className="p-3">Descrição do Item</th><th className="p-3 text-center">Quantidade</th><th className="p-3 text-right">Custo Un.</th><th className="p-3 text-right">Subtotal</th></tr></thead>

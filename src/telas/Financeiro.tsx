@@ -153,7 +153,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
               <label className="block font-bold text-slate-500 uppercase mb-1">Mês</label>
               <select value={mesFiltro} onChange={(e) => setMesFiltro(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select>
             </div>
-            {/* CORRIGIDO: Select do Ano recolocado! */}
             <div>
               <label className="block font-bold text-slate-500 uppercase mb-1">Ano</label>
               <select value={anoFiltro} onChange={(e) => setAnoFiltro(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none">
@@ -404,25 +403,42 @@ export default function Financeiro({ lancamentos, compras, fornecedores }: Finan
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-fade-in no-print">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-              <div><p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Recibo do Vale / NF</p><h3 className="text-2xl font-black">{compraModal.codigoOrdem}</h3></div>
+              <div>
+                <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Recibo do Vale / NF</p>
+                <h3 className="text-2xl font-black">{compraModal.codigoOrdem}</h3>
+              </div>
               <button onClick={() => setCompraModal(null)} className="w-10 h-10 bg-slate-800 hover:bg-rose-500 rounded-full font-black text-xl transition-colors">✕</button>
             </div>
+            
             <div className="p-6 overflow-y-auto">
               <div className="grid grid-cols-2 gap-4 mb-6 border-b border-slate-200 pb-6">
                 <div><p className="text-[10px] font-bold text-slate-400 uppercase">Fornecedor</p><p className="font-black text-slate-800 text-lg">{compraModal.fornecedorNome}</p></div>
-                <div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase">NF / Vale Relacionado</p><p className="font-black text-slate-800 text-lg">{compraModal.numeroVale || 'N/A'}</p></div>
+                <div className="text-right">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">Data da Compra</p>
+                  <p className="font-black text-slate-800 text-lg mb-2">{compraModal.dataCompra ? compraModal.dataCompra.split('T')[0].split('-').reverse().join('/') : 'N/A'}</p>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase">NF / Vale Relacionado</p>
+                  <p className="font-black text-slate-800 text-lg">{compraModal.numeroVale || 'N/A'}</p>
+                </div>
               </div>
+
               <h4 className="font-bold text-slate-400 uppercase tracking-widest text-[10px] mb-3">O que foi comprado neste vale:</h4>
               <div className="space-y-2 mb-6">
                 {compraModal.itens.map(item => (
                   <div key={item.produtoId} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
-                    <div><p className="font-bold text-slate-800 text-sm">{item.nome}</p><p className="text-[10px] font-bold text-slate-500">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div>
+                    <div>
+                      <p className="font-bold text-slate-800 text-sm">{item.nome}</p>
+                      <p className="text-[10px] font-bold text-slate-500">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p>
+                    </div>
                     <span className="font-black text-slate-700">R$ {item.subtotal.toFixed(2)}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="bg-slate-100 p-6 border-t border-slate-200 flex justify-between items-center mt-auto"><p className="font-bold text-slate-500 uppercase">Valor Total do Vale</p><p className="text-3xl font-black text-slate-900">R$ {compraModal.valorTotal.toFixed(2)}</p></div>
+
+            <div className="bg-slate-100 p-6 border-t border-slate-200 flex justify-between items-center mt-auto">
+              <p className="font-bold text-slate-500 uppercase">Valor Total do Vale</p>
+              <p className="text-3xl font-black text-slate-900">R$ {compraModal.valorTotal.toFixed(2)}</p>
+            </div>
           </div>
         </div>
       )}
