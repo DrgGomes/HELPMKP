@@ -16,7 +16,7 @@ import Financeiro from './telas/Financeiro';
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
   const [carregandoAuth, setCarregandoAuth] = useState(true);
-  const [telaAtiva, setTelaAtiva] = useState('dashboard');
+  const [telaAtiva, setTelaAtiva] = useState('financeiro');
   const [menuAberto, setMenuAberto] = useState(false);
   const [emailUsuario, setEmailUsuario] = useState('');
   
@@ -26,16 +26,11 @@ export default function App() {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
-  const [compras, setCompras] = useState<Compra[]>([]); // NOVO ESTADO
+  const [compras, setCompras] = useState<Compra[]>([]);
 
   useEffect(() => {
-    let unsubPlat: () => void = () => {};
-    let unsubProd: () => void = () => {};
-    let unsubCustos: () => void = () => {};
-    let unsubCat: () => void = () => {};
-    let unsubForn: () => void = () => {};
-    let unsubLanc: () => void = () => {};
-    let unsubComp: () => void = () => {};
+    let unsubPlat: () => void = () => {}; let unsubProd: () => void = () => {}; let unsubCustos: () => void = () => {};
+    let unsubCat: () => void = () => {}; let unsubForn: () => void = () => {}; let unsubLanc: () => void = () => {}; let unsubComp: () => void = () => {};
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -48,7 +43,6 @@ export default function App() {
         unsubForn = onSnapshot(collection(db, 'usuarios', user.uid, 'fornecedores'), (snapshot) => { setFornecedores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fornecedor))); });
         unsubLanc = onSnapshot(collection(db, 'usuarios', user.uid, 'lancamentos'), (snapshot) => { setLancamentos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LancamentoFinanceiro))); });
         unsubComp = onSnapshot(collection(db, 'usuarios', user.uid, 'compras'), (snapshot) => { setCompras(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Compra))); });
-
       } else {
         setIsLogado(false); setEmailUsuario('');
         setPlataformas([]); setProdutos([]); setCustosPadrao([]); setCategorias([]); setFornecedores([]); setLancamentos([]); setCompras([]);
@@ -89,7 +83,10 @@ export default function App() {
       <div className="flex-1 overflow-auto bg-slate-50/50">
         <div className="max-w-7xl mx-auto w-full p-5 md:p-8 lg:p-10">
           {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} />}
-          {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} />}
+          
+          {/* ATUALIZADO: Passando todas as listas para o Financeiro */}
+          {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} />}
+          
           {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
           {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} produtos={produtos} plataformas={plataformas} custosPadrao={custosPadrao} categorias={categorias} />}
           {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}
