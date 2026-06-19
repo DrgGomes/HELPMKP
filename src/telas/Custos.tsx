@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { doc, setDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
+import { doc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { CustoPadrao, Categoria, CategoriaDespesa } from '../types';
 
@@ -13,7 +13,6 @@ export default function Custos({ custosPadrao, categorias, categoriasDespesa }: 
   const [nomeCusto, setNomeCusto] = useState(''); const [valorCusto, setValorCusto] = useState(''); const [iconeCusto, setIconeCusto] = useState('📦');
   const [nomeCategoria, setNomeCategoria] = useState('');
   
-  // Categorias de Despesa
   const [nomeCatDesp, setNomeCatDesp] = useState(''); const [corCatDesp, setCorCatDesp] = useState('#3b82f6');
   const coresPadrao = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#64748b', '#0f172a'];
 
@@ -35,7 +34,6 @@ export default function Custos({ custosPadrao, categorias, categoriasDespesa }: 
 
   const apagarCategoria = async (id: string) => { const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'categorias', id)); };
 
-  // Lógica das Despesas
   const adicionarCatDesp = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeCatDesp) return;
     const userId = auth.currentUser?.uid as string; if (!userId) return;
@@ -53,7 +51,6 @@ export default function Custos({ custosPadrao, categorias, categoriasDespesa }: 
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* COLUNA 1: DESPESAS FINANCEIRAS */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div className="border-b border-slate-100 pb-3 mb-5"><h3 className="font-black text-rose-600 flex items-center gap-2"><span>💸</span> Categorias de Despesas</h3><p className="text-xs text-slate-400 mt-1 font-bold">Usado no Fluxo de Caixa e Gráficos.</p></div>
           <form onSubmit={adicionarCatDesp} className="space-y-4 mb-6">
@@ -77,7 +74,6 @@ export default function Custos({ custosPadrao, categorias, categoriasDespesa }: 
           </div>
         </div>
 
-        {/* COLUNA 2: CUSTOS DE EMBALAGEM */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div className="border-b border-slate-100 pb-3 mb-5"><h3 className="font-black text-indigo-600 flex items-center gap-2"><span>📦</span> Custos de Embalagem</h3><p className="text-xs text-slate-400 mt-1 font-bold">Somados automaticamente na criação de produtos.</p></div>
           <form onSubmit={adicionarCustoPadrao} className="space-y-4 mb-6">
@@ -94,7 +90,6 @@ export default function Custos({ custosPadrao, categorias, categoriasDespesa }: 
           </div>
         </div>
 
-        {/* COLUNA 3: CATEGORIAS DE PRODUTOS */}
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200">
           <div className="border-b border-slate-100 pb-3 mb-5"><h3 className="font-black text-slate-800 flex items-center gap-2"><span>👕</span> Categorias de Produtos</h3><p className="text-xs text-slate-400 mt-1 font-bold">Para organizar o seu Estoque de vendas.</p></div>
           <form onSubmit={adicionarCategoria} className="flex gap-2 mb-6">

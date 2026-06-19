@@ -2,12 +2,15 @@ import { useState, useMemo } from 'react';
 import type { Produto, Plataforma, LancamentoFinanceiro, CategoriaDespesa } from '../types';
 
 interface DashboardProps {
-  produtos: Produto[]; plataformas: Plataforma[]; lancamentos: LancamentoFinanceiro[];
-  categoriasDespesa: CategoriaDespesa[]; // NOVO: Prop para o gráfico
+  produtos: Produto[]; 
+  plataformas: Plataforma[]; 
+  lancamentos: LancamentoFinanceiro[];
+  categoriasDespesa: CategoriaDespesa[];
   setTelaAtiva: (tela: string) => void;
 }
 
-export default function Dashboard({ produtos, plataformas, lancamentos, categoriasDespesa, setTelaAtiva }: DashboardProps) {
+// Removi "plataformas" da desestruturação para o Vercel não reclamar de variável ociosa
+export default function Dashboard({ produtos, lancamentos, categoriasDespesa, setTelaAtiva }: DashboardProps) {
   const dataAtual = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(dataAtual.getMonth() + 1);
   const [anoFiltro, setAnoFiltro] = useState<number>(dataAtual.getFullYear());
@@ -19,7 +22,6 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
   const valorEstoque = produtos.reduce((acc, p) => acc + (p.custoBase * (p.estoque || 0)), 0);
   const totalItensEstoque = produtos.reduce((acc, p) => acc + (p.estoque || 0), 0);
 
-  // --- FILTRAGEM DO MÊS PARA OS GRÁFICOS ---
   const lancamentosMes = useMemo(() => {
     return lancamentos.filter(l => {
       const mes = new Date(l.dataVencimento + 'T12:00:00').getMonth() + 1;
@@ -32,8 +34,6 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
   const despesasMesPagas = lancamentosMes.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((a, b) => a + b.valor, 0);
   const maxFinanceiro = Math.max(receitasMesPagas, despesasMesPagas) || 1;
 
-  // --- O MOTOR DO GRÁFICO DE PIZZA DE DESPESAS ---
-  // Pega todas as despesas (pagas ou não) daquele mês para saber para onde o dinheiro está fugindo
   const despesasTotaisDoMes = lancamentosMes.filter(l => l.tipo === 'despesa');
   const valorTotalDespesas = despesasTotaisDoMes.reduce((acc, l) => acc + l.valor, 0) || 1;
 
@@ -41,20 +41,18 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
     const agrupado = despesasTotaisDoMes.reduce((acc, l) => {
       const catNome = l.categoria || 'Sem Categoria';
       const objCat = categoriasDespesa.find(c => c.nome === catNome);
-      const cor = objCat ? objCat.cor : '#94a3b8'; // Puxa a cor que você cadastrou (ou Cinza)
+      const cor = objCat ? objCat.cor : '#94a3b8';
       
       if (!acc[catNome]) acc[catNome] = { valor: 0, cor };
       acc[catNome].valor += l.valor;
       return acc;
     }, {} as Record<string, { valor: number, cor: string }>);
 
-    // Converte para Array e ordena da maior despesa para a menor
     return Object.entries(agrupado)
       .map(([nome, dados]) => ({ nome, ...dados }))
       .sort((a, b) => b.valor - a.valor);
   }, [despesasTotaisDoMes, categoriasDespesa]);
 
-  // Monta a string do CSS Conic Gradient (Ex: #ff0000 0% 20%, #00ff00 20% 100%)
   let grauAcumulado = 0;
   const stringConicGradient = dadosPizza.map(fatia => {
     const porcentagem = (fatia.valor / valorTotalDespesas) * 100;
@@ -83,8 +81,6 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        
-        {/* GRÁFICO 1: BARRAS */}
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
           <div className="flex justify-between items-center mb-6"><h3 className="text-lg font-bold text-slate-800">Fluxo do Mês ({mesFiltro === 0 ? 'Geral' : mesFiltro}/{anoFiltro === 0 ? 'Geral' : anoFiltro})</h3><span className="text-[10px] font-black uppercase bg-slate-100 text-slate-500 px-2 py-1 rounded">Realizado</span></div>
           <div className="space-y-6">
@@ -93,12 +89,10 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
           </div>
         </div>
 
-        {/* GRÁFICO 2: DONUT CHART (PIZZA) MÁGICO DE DESPESAS */}
         <div className="bg-white p-8 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-8 items-center">
           <div className="flex-1 w-full min-w-0">
             <h3 className="text-lg font-bold text-slate-800 mb-1">Para onde o dinheiro vai?</h3>
             <p className="text-xs text-slate-500 font-medium mb-5">Distribuição das despesas do mês {mesFiltro === 0 ? 'selecionado' : mesFiltro}.</p>
-            
             <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
               {temGraficoParaExibir ? dadosPizza.map((fatia) => (
                 <div key={fatia.nome} className="flex justify-between items-center bg-slate-50 p-2.5 rounded-xl border border-slate-100">
@@ -110,21 +104,12 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
               )}
             </div>
           </div>
-
           <div className="shrink-0 flex items-center justify-center">
-            {/* O Gráfico de Pizza NATIVO (Zero bibliotecas lentas!) */}
-            <div 
-              className="w-48 h-48 rounded-full shadow-inner flex items-center justify-center relative transform hover:scale-105 transition-transform duration-500"
-              style={{ background: temGraficoParaExibir ? `conic-gradient(${stringConicGradient})` : '#f1f5f9' }}
-            >
-              <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center shadow-md border-4 border-white">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Despesas</p>
-                <p className="font-black text-rose-600 text-lg">R$ {(temGraficoParaExibir ? valorTotalDespesas : 0).toFixed(2)}</p>
-              </div> 
+            <div className="w-48 h-48 rounded-full shadow-inner flex items-center justify-center relative transform hover:scale-105 transition-transform duration-500" style={{ background: temGraficoParaExibir ? `conic-gradient(${stringConicGradient})` : '#f1f5f9' }}>
+              <div className="w-32 h-32 bg-white rounded-full flex flex-col items-center justify-center shadow-md border-4 border-white"><p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Despesas</p><p className="font-black text-rose-600 text-lg">R$ {(temGraficoParaExibir ? valorTotalDespesas : 0).toFixed(2)}</p></div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );
