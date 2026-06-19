@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { doc, addDoc, collection, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -27,12 +27,13 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [mesesRepetir, setMesesRepetir] = useState('12');
   const [processandoIA, setProcessandoIA] = useState(false);
 
-  // --- ESTADOS DE EDIÇÃO EM MASSA ---
+  // --- EDIÇÃO EM LOTE ---
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [categoriaLote, setCategoriaLote] = useState('');
   const [processandoLote, setProcessandoLote] = useState(false);
 
+  // --- FILTROS GLOBAIS ---
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
@@ -46,6 +47,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); 
 
+  // RASCUNHOS DOS FILTROS
   const [draftBusca, setDraftBusca] = useState('');
   const [draftMes, setDraftMes] = useState<number>(mesAtual);
   const [draftAno, setDraftAno] = useState<number>(anoAtual);
@@ -57,6 +59,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
   const [compraModal, setCompraModal] = useState<Compra | null>(null);
 
+  // --- CALENDÁRIO ---
   const [calMes, setCalMes] = useState<number>(mesAtual);
   const [calAno, setCalAno] = useState<number>(anoAtual);
   const [modoArrastar, setModoArrastar] = useState<'vencimento' | 'emissao'>('vencimento');
@@ -64,16 +67,14 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const aplicarFiltros = () => {
     setBuscaDescricao(draftBusca); setMesFiltro(draftMes); setAnoFiltro(draftAno);
     setStatusFiltro(draftStatus); setTipoFiltro(draftTipo); setFornecedorFiltro(draftFornecedor);
-    setCategoriaFiltro(draftCategoria);
-    setSelecionados([]); // Limpa seleção ao filtrar para evitar bugs
+    setCategoriaFiltro(draftCategoria); setSelecionados([]);
   };
 
   const limparFiltros = () => {
     setDraftBusca(''); setBuscaDescricao(''); setDraftMes(0); setMesFiltro(0);
     setDraftAno(0); setAnoFiltro(0); setDraftStatus('todos'); setStatusFiltro('todos');
     setDraftTipo('todos'); setTipoFiltro('todos'); setDraftFornecedor('todos'); setFornecedorFiltro('todos');
-    setDraftCategoria('todos'); setCategoriaFiltro('todos');
-    setSelecionados([]);
+    setDraftCategoria('todos'); setCategoriaFiltro('todos'); setSelecionados([]);
   };
 
   const lidarUploadComprovanteIA = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,7 +82,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     if (!file) return;
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada.");
+    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada no Vercel.");
 
     setProcessandoIA(true);
 
@@ -159,7 +160,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setAbaAtiva('caixa'); setIdEdicao(lanc.id); setTipo(lanc.tipo); setDescricao(lanc.descricao);
     setValor(lanc.valor.toString()); setDataLancamento(lanc.dataLancamento || lanc.dataVencimento);
     setDataVencimento(lanc.dataVencimento); setCategoria(lanc.categoria || ''); setFornSelecionado(lanc.fornecedorId || '');
-    setIsRecorrente(false); window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsRecorrente(false); setModoSelecao(false); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const limparFormulario = () => { 
@@ -176,7 +177,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const excluirLancamento = async (lanc: LancamentoFinanceiro) => {
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     if (lanc.grupoRecorrenciaId) {
-      const resposta = window.prompt("Este boleto faz parte de uma sequência repetida!\n\nDigite 'APENAS' para excluir só este mês.\nDigite 'SÉRIE' para apagar todas as parcelas futuras dessa assinatura:");
+      const resposta = window.prompt("Este boleto faz parte de uma sequência repetida!\n\nDigite 'APENAS' para excluir só este mês.\nDigite 'SÉRIE' para apagar todas as parcelas futuras:");
       if (resposta?.toUpperCase() === 'APENAS') await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id));
       else if (resposta?.toUpperCase() === 'SÉRIE') {
         const correspondentes = lancamentos.filter(l => l.grupoRecorrenciaId === lanc.grupoRecorrenciaId);
@@ -203,7 +204,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- LÓGICA DE EDIÇÃO EM MASSA (BATCH) ---
+  // --- LÓGICA DE EDIÇÃO EM LOTE ---
   const selecionarTodos = () => {
     if (selecionados.length === lancamentosFiltrados.length) setSelecionados([]);
     else setSelecionados(lancamentosFiltrados.map(l => l.id));
@@ -223,12 +224,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       });
       await batch.commit();
       alert(`✅ ${selecionados.length} lançamentos atualizados para "${categoriaLote}"!`);
-      setModoSelecao(false);
-      setSelecionados([]);
-      setCategoriaLote('');
+      setModoSelecao(false); setSelecionados([]); setCategoriaLote('');
     } catch (error) {
-      console.error(error);
-      alert("Erro ao atualizar em massa.");
+      console.error(error); alert("Erro ao atualizar em massa.");
     }
     setProcessandoLote(false);
   };
@@ -267,7 +265,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     return { receitas: rec, despesas: desp, saldo: rec - desp };
   }, [lancamentosFiltrados]);
 
-  // CALENDÁRIO DRAG AND DROP LOGIC
+  // CALENDÁRIO LOGIC
   const diasCalendario = useMemo(() => {
     const primeiroDiaSemana = new Date(calAno, calMes - 1, 1).getDay();
     const totalDiasMes = new Date(calAno, calMes, 0).getDate();
@@ -374,11 +372,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               <div className="flex justify-between items-center px-4 pt-3 pb-3 border-b border-slate-100">
                 <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Extrato do Período</p>
                 <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition-colors shadow-sm border ${modoSelecao ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'}`}>
-                  {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Massa'}
+                  {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Lote'}
                 </button>
               </div>
 
-              {/* O PAINEL DE CONTROLE DE LOTE (MÁGICA) */}
+              {/* O PAINEL DE CONTROLE DE LOTE */}
               {modoSelecao && (
                 <div className="m-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-wrap gap-4 items-center justify-between animate-fade-in shadow-inner">
                   <div className="flex items-center gap-3">
@@ -392,7 +390,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                       <option value="Geral">Limpar Categoria (Geral)</option>
                     </select>
                     <button onClick={aplicarCategoriaEmMassa} disabled={processandoLote || selecionados.length === 0 || !categoriaLote} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-lg text-sm shadow-md transition-all disabled:opacity-50">
-                      {processandoLote ? 'Aplicando...' : 'Aplicar'}
+                      {processandoLote ? 'Aplicando...' : 'Aplicar Lote'}
                     </button>
                   </div>
                 </div>
@@ -406,13 +404,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
                     return (
                       <div key={lanc.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${lanc.status === 'pago' ? 'bg-slate-50/50 opacity-60' : 'bg-white hover:bg-slate-50'} ${selecionado ? 'bg-indigo-50/50 border-l-4 border-indigo-500' : 'border-l-4 border-transparent'}`}>
+                        
                         <div className="flex items-center gap-3 flex-1 min-w-0">
-                          
-                          {/* CHECKBOX DE SELEÇÃO */}
                           {modoSelecao && (
                             <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==lanc.id)); else setSelecionados([...selecionados, lanc.id]); }} className="w-5 h-5 accent-indigo-600 cursor-pointer shrink-0" />
                           )}
-
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1">
                               {!modoSelecao && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${lanc.tipo === 'despesa' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>}
@@ -424,7 +420,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-3"><span className={`font-black text-xl ${lanc.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>R$ {lanc.valor.toFixed(2)}</span><button onClick={() => alternarStatus(lanc)} className="px-4 py-2 text-xs font-black uppercase rounded-xl border bg-white shadow-sm disabled:opacity-50" disabled={modoSelecao}>{lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}</button><button onClick={() => excluirLancamento(lanc)} className="text-slate-300 hover:text-rose-500 p-1 disabled:opacity-50" disabled={modoSelecao}>🗑️</button></div>
+                        <div className="flex items-center gap-3"><span className={`font-black text-xl ${lanc.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>R$ {lanc.valor.toFixed(2)}</span><button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className="px-4 py-2 text-xs font-black uppercase rounded-xl border bg-white shadow-sm disabled:opacity-50">{lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}</button><button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="text-slate-300 hover:text-rose-500 p-1 disabled:opacity-50">🗑️</button></div>
                       </div>
                     );
                   })}
@@ -492,6 +488,22 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               })}
             </div>
           </div></div>
+
+          {/* O RODAPÉ RESUMO DO CALENDÁRIO ESTÁ DE VOLTA! */}
+          <div className="mt-6 flex flex-col md:flex-row justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200 gap-4">
+            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Resumo do Mês Vizualizado</p>
+            <div className="flex gap-6">
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-emerald-600 uppercase">Receitas (+)</p>
+                <p className="font-black text-slate-800 text-lg">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'receita' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] font-bold text-rose-600 uppercase">Despesas (-)</p>
+                <p className="font-black text-slate-800 text-lg">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'despesa' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p>
+              </div>
+            </div>
+          </div>
+
         </div>
       )}
 
