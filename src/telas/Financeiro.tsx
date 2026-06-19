@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { doc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
+import { useState, useMemo } from 'react';
+import { doc, addDoc, collection, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { LancamentoFinanceiro, Compra, Fornecedor, CategoriaDespesa } from '../types';
@@ -26,6 +26,12 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [isRecorrente, setIsRecorrente] = useState(false);
   const [mesesRepetir, setMesesRepetir] = useState('12');
   const [processandoIA, setProcessandoIA] = useState(false);
+
+  // --- ESTADOS DE EDIÇÃO EM MASSA ---
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [categoriaLote, setCategoriaLote] = useState('');
+  const [processandoLote, setProcessandoLote] = useState(false);
 
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
@@ -59,6 +65,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setBuscaDescricao(draftBusca); setMesFiltro(draftMes); setAnoFiltro(draftAno);
     setStatusFiltro(draftStatus); setTipoFiltro(draftTipo); setFornecedorFiltro(draftFornecedor);
     setCategoriaFiltro(draftCategoria);
+    setSelecionados([]); // Limpa seleção ao filtrar para evitar bugs
   };
 
   const limparFiltros = () => {
@@ -66,6 +73,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setDraftAno(0); setAnoFiltro(0); setDraftStatus('todos'); setStatusFiltro('todos');
     setDraftTipo('todos'); setTipoFiltro('todos'); setDraftFornecedor('todos'); setFornecedorFiltro('todos');
     setDraftCategoria('todos'); setCategoriaFiltro('todos');
+    setSelecionados([]);
   };
 
   const lidarUploadComprovanteIA = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -193,6 +201,36 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     const dataObj = new Date(dataAtualStr + 'T12:00:00'); dataObj.setDate(dataObj.getDate() + dias);
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
+  };
+
+  // --- LÓGICA DE EDIÇÃO EM MASSA (BATCH) ---
+  const selecionarTodos = () => {
+    if (selecionados.length === lancamentosFiltrados.length) setSelecionados([]);
+    else setSelecionados(lancamentosFiltrados.map(l => l.id));
+  };
+
+  const aplicarCategoriaEmMassa = async () => {
+    if (selecionados.length === 0) return alert("Selecione pelo menos um lançamento.");
+    if (!categoriaLote) return alert("Escolha a categoria que deseja aplicar.");
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
+
+    setProcessandoLote(true);
+    try {
+      const batch = writeBatch(db);
+      selecionados.forEach(id => {
+        const ref = doc(db, 'usuarios', userId, 'lancamentos', id);
+        batch.update(ref, { categoria: categoriaLote });
+      });
+      await batch.commit();
+      alert(`✅ ${selecionados.length} lançamentos atualizados para "${categoriaLote}"!`);
+      setModoSelecao(false);
+      setSelecionados([]);
+      setCategoriaLote('');
+    } catch (error) {
+      console.error(error);
+      alert("Erro ao atualizar em massa.");
+    }
+    setProcessandoLote(false);
   };
 
   const relatorioFornecedores = useMemo(() => {
@@ -331,22 +369,62 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             </div>
 
             <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+              
+              {/* O HEADER COM O BOTÃO DE EDIÇÃO EM MASSA */}
+              <div className="flex justify-between items-center px-4 pt-3 pb-3 border-b border-slate-100">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Extrato do Período</p>
+                <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition-colors shadow-sm border ${modoSelecao ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'}`}>
+                  {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Massa'}
+                </button>
+              </div>
+
+              {/* O PAINEL DE CONTROLE DE LOTE (MÁGICA) */}
+              {modoSelecao && (
+                <div className="m-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-wrap gap-4 items-center justify-between animate-fade-in shadow-inner">
+                  <div className="flex items-center gap-3">
+                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase bg-white border border-indigo-200 text-indigo-600 px-3 py-2 rounded-lg shadow-sm hover:bg-indigo-100 transition-colors">Selecionar Todos</button>
+                    <span className="text-sm font-black text-indigo-900">{selecionados.length} selecionados</span>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <select value={categoriaLote} onChange={e => setCategoriaLote(e.target.value)} className="px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm font-bold text-slate-700 outline-none flex-1">
+                      <option value="">Escolher Nova Pasta...</option>
+                      {categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                      <option value="Geral">Limpar Categoria (Geral)</option>
+                    </select>
+                    <button onClick={aplicarCategoriaEmMassa} disabled={processandoLote || selecionados.length === 0 || !categoriaLote} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-lg text-sm shadow-md transition-all disabled:opacity-50">
+                      {processandoLote ? 'Aplicando...' : 'Aplicar'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {lancamentosFiltrados.length === 0 ? <div className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento encontrado.</div> : (
                 <div className="divide-y divide-slate-100">
                   {lancamentosFiltrados.map(lanc => {
                     const isAtrasado = lanc.status === 'pendente' && lanc.tipo === 'despesa' && lanc.dataVencimento < new Date().toISOString().split('T')[0];
+                    const selecionado = selecionados.includes(lanc.id);
+
                     return (
-                      <div key={lanc.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${lanc.status === 'pago' ? 'bg-slate-50/50 opacity-60' : 'bg-white hover:bg-slate-50'}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${lanc.tipo === 'despesa' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
-                            <p className={`font-black text-base truncate text-slate-800`}>{lanc.descricao}</p>
-                            {lanc.recorrente && <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[9px] font-black px-1.5 py-0.5 rounded">🔁 Mensal</span>}
-                            {lanc.categoria && <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: getCorCategoria(lanc.categoria) }}>{lanc.categoria}</span>}
+                      <div key={lanc.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${lanc.status === 'pago' ? 'bg-slate-50/50 opacity-60' : 'bg-white hover:bg-slate-50'} ${selecionado ? 'bg-indigo-50/50 border-l-4 border-indigo-500' : 'border-l-4 border-transparent'}`}>
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          
+                          {/* CHECKBOX DE SELEÇÃO */}
+                          {modoSelecao && (
+                            <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==lanc.id)); else setSelecionados([...selecionados, lanc.id]); }} className="w-5 h-5 accent-indigo-600 cursor-pointer shrink-0" />
+                          )}
+
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              {!modoSelecao && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${lanc.tipo === 'despesa' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>}
+                              <p className={`font-black text-base truncate text-slate-800`}>{lanc.descricao}</p>
+                              {lanc.recorrente && <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[9px] font-black px-1.5 py-0.5 rounded">🔁 Mensal</span>}
+                              {lanc.categoria && <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: getCorCategoria(lanc.categoria) }}>{lanc.categoria}</span>}
+                            </div>
+                            <p className="text-xs font-bold text-slate-500">Emitido: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} • Vence: <span className={isAtrasado ? 'text-rose-600 font-black' : ''}>{lanc.dataVencimento.split('-').reverse().join('/')}</span></p>
                           </div>
-                          <p className="text-xs font-bold text-slate-500">Emitido: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} • Vence: <span className={isAtrasado ? 'text-rose-600 font-black' : ''}>{lanc.dataVencimento.split('-').reverse().join('/')}</span></p>
                         </div>
-                        <div className="flex items-center gap-3"><span className={`font-black text-xl ${lanc.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>R$ {lanc.valor.toFixed(2)}</span><button onClick={() => alternarStatus(lanc)} className="px-4 py-2 text-xs font-black uppercase rounded-xl border bg-white shadow-sm">{lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}</button><button onClick={() => excluirLancamento(lanc)} className="text-slate-300 hover:text-rose-500 p-1">🗑️</button></div>
+
+                        <div className="flex items-center gap-3"><span className={`font-black text-xl ${lanc.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>R$ {lanc.valor.toFixed(2)}</span><button onClick={() => alternarStatus(lanc)} className="px-4 py-2 text-xs font-black uppercase rounded-xl border bg-white shadow-sm disabled:opacity-50" disabled={modoSelecao}>{lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}</button><button onClick={() => excluirLancamento(lanc)} className="text-slate-300 hover:text-rose-500 p-1 disabled:opacity-50" disabled={modoSelecao}>🗑️</button></div>
                       </div>
                     );
                   })}
