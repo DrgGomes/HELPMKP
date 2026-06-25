@@ -57,51 +57,148 @@ export default function App() {
     return () => { unsubscribeAuth(); unsubPlat(); unsubProd(); unsubCustos(); unsubCat(); unsubCatDesp(); unsubForn(); unsubLanc(); unsubComp(); };
   }, []);
 
-  const lidarSair = async () => { if (window.confirm("Sair do sistema?")) await signOut(auth); };
+  const lidarSair = async () => { if (window.confirm("Deseja desconectar da sua sessão segura?")) await signOut(auth); };
 
-  if (carregandoAuth) return <div className="min-h-screen bg-slate-950 flex justify-center items-center"><div className="animate-spin rounded-full h-14 w-14 border-4 border-blue-500/30 border-t-blue-500"></div></div>;
+  if (carregandoAuth) return (
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center">
+      <div className="relative w-24 h-24 flex items-center justify-center">
+        <div className="absolute w-full h-full border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin"></div>
+        <span className="text-3xl">🚀</span>
+      </div>
+      <p className="mt-6 text-blue-400 font-black tracking-widest uppercase text-xs animate-pulse">Iniciando Motor 5.0...</p>
+    </div>
+  );
+
   if (!isLogado) return <Login aoLogar={() => setIsLogado(true)} />;
 
+  const faturasAtrasadas = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.dataVencimento < new Date().toISOString().split('T')[0]).length;
+
   return (
-    <div className="min-h-screen bg-slate-50/50 flex flex-col md:flex-row font-sans text-slate-800 antialiased">
-      <div className="md:hidden bg-slate-950 text-white p-4 flex justify-between items-center z-20"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div><h1 className="text-xl font-black text-white">HelpMkp</h1></div><button onClick={() => setMenuAberto(!menuAberto)} className="p-2 text-slate-400">☰</button></div>
-      <div className={`${menuAberto ? 'block' : 'hidden'} md:flex w-full md:w-64 bg-slate-950 text-white p-5 flex-col absolute md:relative z-10 min-h-screen md:min-h-0 border-r border-slate-900 shadow-xl overflow-y-auto`}>
-        <div className="flex items-center gap-2.5 mb-9 px-3 hidden md:flex"><div className="w-3 h-3 rounded-full bg-blue-500 shadow-lg shadow-blue-500/50"></div><h1 className="text-2xl font-black bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">HelpMkp</h1></div>
-        <nav className="space-y-1 flex-1">
-          <button onClick={() => { setTelaAtiva('dashboard'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>📊</span> Dashboard</button>
+    <div className="min-h-screen bg-[#f4f7fb] flex font-sans text-slate-800 antialiased overflow-hidden selection:bg-blue-500/30">
+      
+      {/* SIDEBAR ULTRA PREMIUM (VERSÃO 5.0) */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-72 bg-slate-950 text-white flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${menuAberto ? 'translate-x-0 shadow-2xl' : '-translate-x-full'} border-r border-white/5`}>
+        
+        {/* Efeito de Vidro e Brilho */}
+        <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none"></div>
+
+        <div className="flex items-center justify-between p-6 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20">
+              <span className="text-xl font-black text-white">H</span>
+            </div>
+            <div>
+              <h1 className="text-xl font-black tracking-tight text-white leading-none">HelpMkp</h1>
+              <p className="text-[9px] text-blue-400 font-bold uppercase tracking-widest mt-1">Enterprise 5.0</p>
+            </div>
+          </div>
+          <button onClick={() => setMenuAberto(false)} className="md:hidden text-slate-400 hover:text-white">✕</button>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-4 px-4 space-y-6 relative z-10 scrollbar-hide">
           
-          <div className="pt-6 pb-2"><p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Estoque & Vendas</p></div>
+          <div className="space-y-1">
+            <button onClick={() => { setTelaAtiva('dashboard'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'dashboard' ? 'bg-white/10 text-white shadow-inner border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className={`text-lg transition-transform duration-300 ${telaAtiva === 'dashboard' ? 'scale-110 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]' : 'group-hover:scale-110'}`}>📊</span>
+              <span>Visão Geral</span>
+            </button>
+          </div>
           
-          <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'calculadora' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🧮</span> Calculadora Rápida</button>
-          <button onClick={() => { setTelaAtiva('financeiro'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'financeiro' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>💰</span> Fluxo de Caixa</button>
-          <button onClick={() => { setTelaAtiva('fornecedores'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'fornecedores' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🚚</span> Compras & Entradas</button>
-          <button onClick={() => { setTelaAtiva('produto_cadastro'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'produto_cadastro' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>➕</span> Cadastrar Produto</button>
-          <button onClick={() => { setTelaAtiva('produtos_lista'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'produtos_lista' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>📦</span> Meus Produtos</button>
+          <div className="space-y-1">
+            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Inteligência & Vendas</p>
+            <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'calculadora' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <div className="flex items-center gap-3"><span className="text-lg group-hover:scale-110 transition-transform">🧮</span><span>Calculadora IA</span></div>
+              <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-black tracking-wider">Novo</span>
+            </button>
+            <button onClick={() => { setTelaAtiva('produto_cadastro'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'produto_cadastro' ? 'bg-white/10 text-white border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">✨</span><span>Criar Produto</span>
+            </button>
+            <button onClick={() => { setTelaAtiva('produtos_lista'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'produtos_lista' ? 'bg-white/10 text-white border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">📦</span><span>Meu Estoque</span>
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Motor Financeiro</p>
+            <button onClick={() => { setTelaAtiva('financeiro'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'financeiro' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <div className="flex items-center gap-3"><span className="text-lg group-hover:scale-110 transition-transform">💸</span><span>Fluxo de Caixa</span></div>
+              {faturasAtrasadas > 0 && <span className="w-5 h-5 flex items-center justify-center bg-rose-500 text-white text-[10px] font-black rounded-full animate-pulse">{faturasAtrasadas}</span>}
+            </button>
+            <button onClick={() => { setTelaAtiva('fornecedores'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'fornecedores' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">🏭</span><span>Fornecedores</span>
+            </button>
+          </div>
           
-          <div className="pt-6 pb-2"><p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Ajustes Globais</p></div>
-          <button onClick={() => { setTelaAtiva('ajustes_categorias'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'ajustes_categorias' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🗂️</span> Ajustes & Categorias</button>
-          <button onClick={() => { setTelaAtiva('configuracoes'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'configuracoes' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>⚙️</span> Taxas & Cofre</button>
+          <div className="space-y-1">
+            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Infraestrutura</p>
+            <button onClick={() => { setTelaAtiva('ajustes_categorias'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'ajustes_categorias' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">🗂️</span><span>Pastas & Custos</span>
+            </button>
+            <button onClick={() => { setTelaAtiva('configuracoes'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'configuracoes' ? 'bg-slate-700/50 text-white border border-slate-600' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">⚙️</span><span>Conexões & Taxas</span>
+            </button>
+          </div>
         </nav>
-        <div className="pt-4 border-t border-slate-900 mt-auto space-y-2">
-          <button onClick={() => { setTelaAtiva('perfil'); setMenuAberto(false); }} className={`w-full p-2.5 rounded-xl transition-all flex items-center gap-3 text-left border ${telaAtiva === 'perfil' ? 'bg-slate-900 border-slate-800 text-white' : 'border-transparent text-slate-400 hover:bg-slate-900/60'}`}><div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-blue-400 border border-slate-700">{emailUsuario ? emailUsuario.charAt(0).toUpperCase() : 'U'}</div><div className="flex-1 min-w-0"><p className="text-xs font-bold text-slate-200 truncate">{emailUsuario || 'Usuário'}</p><p className="text-[10px] text-slate-500 font-semibold truncate">Meu perfil</p></div></button>
-          <button onClick={lidarSair} className="w-full py-2.5 px-4 bg-slate-900/50 hover:bg-rose-950/30 text-rose-400 hover:text-rose-300 border border-slate-900 hover:border-rose-900/40 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"><span>🚪</span> Sair</button>
+
+        {/* Perfil Inferior Elegante */}
+        <div className="p-4 relative z-10 border-t border-white/5">
+          <button onClick={() => { setTelaAtiva('perfil'); setMenuAberto(false); }} className="w-full flex items-center gap-3 p-3 rounded-2xl hover:bg-white/5 transition-all group">
+            <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center border-2 border-slate-700 group-hover:border-blue-500 transition-colors overflow-hidden">
+              <span className="text-blue-400 font-black text-lg">{emailUsuario ? emailUsuario.charAt(0).toUpperCase() : 'U'}</span>
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-bold text-slate-200 truncate">{emailUsuario || 'Usuário Admin'}</p>
+              <p className="text-[10px] font-medium text-emerald-400 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Sistema Online</p>
+            </div>
+          </button>
         </div>
       </div>
-      <div className="flex-1 overflow-auto bg-slate-50/50">
-        <div className="max-w-7xl mx-auto w-full p-5 md:p-8 lg:p-10">
-          {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} categoriasDespesa={categoriasDespesa} setTelaAtiva={setTelaAtiva} />}
-          
-          {/* TELA NOVA: CALCULADORA RÁPIDA */}
-          {telaAtiva === 'calculadora' && <CalculadoraRapida plataformas={plataformas} />}
 
-          {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} categoriasDespesa={categoriasDespesa} />}
-          {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
-          {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} produtos={produtos} plataformas={plataformas} custosPadrao={custosPadrao} categorias={categorias} />}
-          {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}
-          {telaAtiva === 'ajustes_categorias' && <Custos custosPadrao={custosPadrao} categorias={categorias} categoriasDespesa={categoriasDespesa} />}
-          {telaAtiva === 'perfil' && <Perfil />}
-          {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
-        </div>
+      {/* ÁREA PRINCIPAL COM TOPBAR 5.0 */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        
+        {/* Overlay Mobile */}
+        {menuAberto && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 md:hidden" onClick={() => setMenuAberto(false)}></div>}
+
+        {/* TopBar Flutuante (Novo) */}
+        <header className="h-20 px-6 lg:px-10 flex items-center justify-between z-30 bg-white/50 backdrop-blur-md border-b border-slate-200/50 sticky top-0">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setMenuAberto(true)} className="md:hidden w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-600 border border-slate-200">☰</button>
+            <div className="hidden sm:block">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Workspace Atual</p>
+              <h2 className="text-lg font-black text-slate-800 leading-tight">Fábrica & E-commerce</h2>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 md:gap-4">
+            <div className="hidden md:flex bg-white px-4 py-2 rounded-full shadow-sm border border-slate-200 items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-xs font-bold text-slate-600">Sincronizado</span>
+            </div>
+            <button onClick={() => setTelaAtiva('financeiro')} className="relative w-10 h-10 bg-white rounded-full shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-600 transition-colors">
+              🔔
+              {faturasAtrasadas > 0 && <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 border-2 border-white rounded-full"></span>}
+            </button>
+            <button onClick={lidarSair} className="w-10 h-10 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center font-bold hover:bg-rose-500 hover:text-white transition-colors tooltip-trigger" title="Desconectar">
+              🚪
+            </button>
+          </div>
+        </header>
+
+        {/* Cointainer das Telas (Mais espaço respirável) */}
+        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#f4f7fb]">
+          <div className="max-w-[1600px] mx-auto w-full p-4 sm:p-6 md:p-8 lg:p-10 pb-32">
+            {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} categoriasDespesa={categoriasDespesa} setTelaAtiva={setTelaAtiva} />}
+            {telaAtiva === 'calculadora' && <CalculadoraRapida plataformas={plataformas} />}
+            {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} categoriasDespesa={categoriasDespesa} />}
+            {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
+            {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} produtos={produtos} plataformas={plataformas} custosPadrao={custosPadrao} categorias={categorias} />}
+            {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}
+            {telaAtiva === 'ajustes_categorias' && <Custos custosPadrao={custosPadrao} categorias={categorias} categoriasDespesa={categoriasDespesa} />}
+            {telaAtiva === 'perfil' && <Perfil />}
+            {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
+          </div>
+        </main>
       </div>
     </div>
   );
