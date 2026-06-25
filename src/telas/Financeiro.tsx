@@ -78,7 +78,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     if (!file) return;
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada no Vercel.");
+    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada.");
 
     setProcessandoIA(true);
 
@@ -112,9 +112,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       const catExiste = categoriasDespesa.find(c => c.nome.toLowerCase() === dadosExtraidos.categoria?.toLowerCase());
       setCategoria(catExiste ? catExiste.nome : (dadosExtraidos.categoria || 'Outros'));
       
-      alert("✅ Uplink Concluído. Dados injetados no sistema. Confirme.");
+      alert("✅ Leitura concluída com sucesso! Confirme os dados e salve.");
     } catch (error: any) {
-      alert(`❌ Erro no Uplink:\n\n${error.message}`);
+      alert(`❌ Erro na leitura do comprovante:\n\n${error.message}`);
     } finally {
       setProcessandoIA(false); event.target.value = '';
     }
@@ -218,7 +218,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         batch.update(ref, { categoria: categoriaLote });
       });
       await batch.commit();
-      alert(`✅ Buffer atualizado: ${selecionados.length} registros movidos para "${categoriaLote}".`);
+      alert(`✅ Sucesso! ${selecionados.length} registros movidos para "${categoriaLote}".`);
       setModoSelecao(false); setSelecionados([]); setCategoriaLote('');
     } catch (error) {
       console.error(error); alert("Falha na gravação em lote.");
@@ -296,7 +296,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 10px; } .no-print { display: none !important; } }`}} />
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
-        <div><h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2><p className="text-slate-500 font-medium mt-1">Gestão de liquidez, extrato hacker e previsibilidade.</p></div>
+        <div><h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2><p className="text-slate-500 font-medium mt-1">Gestão de liquidez e visibilidade avançada do seu caixa.</p></div>
         <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
           <span className="text-lg">⚙️</span> {mostrarRelatorio ? 'Ocultar Filtros' : 'Filtros Avançados'}
         </button>
@@ -305,7 +305,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       {mostrarRelatorio && (
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl no-print animate-fade-in">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 text-xs">
-            <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Query</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="Buscar..." /></div>
+            <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Busca Específica</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="Buscar palavra..." /></div>
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Mês</label><select value={draftMes} onChange={(e) => setDraftMes(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select></div>
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Ano</label><select value={draftAno} onChange={(e) => setDraftAno(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option><option value={2025}>2025</option><option value={2026}>2026</option></select></div>
             <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Categoria</label><select value={draftCategoria} onChange={(e) => setDraftCategoria(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
@@ -313,7 +313,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Origem</label><select value={draftFornecedor} onChange={(e) => setDraftFornecedor(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Todos</option><option value="">Avulsos</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
           </div>
           <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-slate-100">
-            <button onClick={limparFiltros} className="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200 transition-colors">Limpar Buffer</button>
+            <button onClick={limparFiltros} className="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200 transition-colors">Limpar Filtros</button>
             <button onClick={aplicarFiltros} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs shadow-lg shadow-indigo-600/30 transition-colors tracking-widest uppercase">Executar Filtro</button>
           </div>
         </div>
@@ -321,7 +321,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
       {/* ABAS PREMIUM */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px no-print">
-        <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Terminal Extrato</button>
+        <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Terminal de Extrato</button>
         <button onClick={() => setAbaAtiva('fornecedores')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'fornecedores' ? 'bg-rose-50 text-rose-600 border-t-2 border-rose-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Dívidas Fornecedor</button>
         <button onClick={() => setAbaAtiva('calendario')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'calendario' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Calendário Operacional</button>
       </div>
@@ -335,9 +335,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               
               <label className={`cursor-pointer group flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${processandoIA ? 'bg-slate-100 text-slate-400 pointer-events-none' : 'bg-slate-900 hover:bg-indigo-600 text-indigo-400 hover:text-white shadow-lg shadow-indigo-500/20 border border-indigo-500/30'}`}>
                 {processandoIA ? (
-                  <><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Processando...</>
+                  <><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Lendo...</>
                 ) : (
-                  <><span>👁️‍🗨️</span> Uplink OCR</>
+                  <><span>✨</span> Escanear Recibo IA</>
                 )}
                 <input type="file" accept="image/*,application/pdf" onChange={lidarUploadComprovanteIA} className="hidden" />
               </label>
@@ -381,12 +381,12 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               )}
               
               {!idEdicao && (
-                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3"><label className="flex items-center gap-3 font-black text-indigo-900 text-xs cursor-pointer"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-5 h-5 accent-indigo-600" />🔁 Lançamento Recorrente?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1 mt-2">Duração (Meses)</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-4 py-3 border border-indigo-200 rounded-xl font-black text-lg text-indigo-600 bg-white outline-none" /></div>)}</div>
+                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3"><label className="flex items-center gap-3 font-black text-indigo-900 text-xs cursor-pointer"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-5 h-5 accent-indigo-600" />🔁 Lançamento Mensal Recorrente?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1 mt-2">Duração (Meses)</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-4 py-3 border border-indigo-200 rounded-xl font-black text-lg text-indigo-600 bg-white outline-none" /></div>)}</div>
               )}
               
               <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button type="submit" className={`flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{idEdicao ? 'Atualizar Bloco' : 'Injetar Registro'}</button>
-                {idEdicao && <button type="button" onClick={limparFormulario} className="px-6 bg-slate-200 text-slate-600 font-black uppercase text-xs rounded-xl hover:bg-slate-300">Abortar</button>}
+                <button type="submit" className={`flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{idEdicao ? 'Atualizar Registro' : 'Salvar Registro'}</button>
+                {idEdicao && <button type="button" onClick={limparFormulario} className="px-6 bg-slate-200 text-slate-600 font-black uppercase text-xs rounded-xl hover:bg-slate-300">Cancelar</button>}
               </div>
             </form>
           </div>
@@ -422,28 +422,28 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                     <span className="w-3 h-3 rounded-full bg-amber-500 opacity-80"></span>
                     <span className="w-3 h-3 rounded-full bg-emerald-500 opacity-80"></span>
                   </div>
-                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">sys.log / extrato</p>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">Extrato Financeiro</p>
                 </div>
                 
                 <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`mt-4 sm:mt-0 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-lg transition-all border ${modoSelecao ? 'bg-rose-500/20 text-rose-400 border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.2)]' : 'bg-slate-800 text-blue-400 hover:text-white border-slate-700 hover:border-blue-500'}`}>
-                  {modoSelecao ? '[ ✕ Abortar Buffer ]' : '[ 📝 Batch Edit ]'}
+                  {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Lote'}
                 </button>
               </div>
 
               {modoSelecao && (
                 <div className="bg-blue-900/20 border-b border-blue-500/30 p-4 flex flex-wrap gap-4 items-center justify-between relative z-10 animate-fade-in">
                   <div className="flex items-center gap-3">
-                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">&gt;&gt; Select_All</button>
-                    <span className="text-xs font-mono text-blue-300 font-bold">[{selecionados.length} bytes selected]</span>
+                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">Selecionar Todos</button>
+                    <span className="text-xs font-mono text-blue-300 font-bold">[{selecionados.length} itens selecionados]</span>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <select value={categoriaLote} onChange={e => setCategoriaLote(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-700 rounded font-mono text-xs text-blue-400 outline-none focus:border-blue-500 flex-1">
-                      <option value="">&gt;&gt; SET_TARGET_DIR...</option>
+                      <option value="">Escolher Nova Categoria...</option>
                       {categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                      <option value="Geral">/root/Geral</option>
+                      <option value="Geral">Pasta Geral</option>
                     </select>
                     <button onClick={aplicarCategoriaEmMassa} disabled={processandoLote || selecionados.length === 0 || !categoriaLote} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-black font-mono rounded text-xs transition-all disabled:opacity-50">
-                      {processandoLote ? 'EXECUTING...' : 'RUN_SCRIPT'}
+                      {processandoLote ? 'Aplicando...' : 'Aplicar Lote'}
                     </button>
                   </div>
                 </div>
@@ -453,7 +453,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 {lancamentosFiltrados.length === 0 ? (
                   <div className="p-16 text-center">
                     <span className="text-4xl text-slate-700 block mb-3 font-mono">_</span>
-                    <p className="font-mono text-slate-500 text-sm uppercase tracking-widest">&gt;&gt; log empty. no data found.</p>
+                    <p className="font-mono text-slate-500 text-sm uppercase tracking-widest">Nenhum registro encontrado no período.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-800/50">
@@ -476,11 +476,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                                 )}
                                 <p className={`font-bold text-sm truncate ${lanc.tipo === 'despesa' ? 'text-slate-200' : 'text-emerald-100'}`}>{lanc.descricao}</p>
                                 
-                                {lanc.recorrente && <span className="bg-blue-900/50 text-blue-400 border border-blue-500/30 text-[9px] font-black font-mono px-1.5 py-0.5 rounded">LOOP</span>}
+                                {lanc.recorrente && <span className="bg-blue-900/50 text-blue-400 border border-blue-500/30 text-[9px] font-black font-mono px-1.5 py-0.5 rounded">MENSAL</span>}
                                 {lanc.categoria && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded border opacity-80" style={{ borderColor: getCorCategoria(lanc.categoria), color: getCorCategoria(lanc.categoria), backgroundColor: `${getCorCategoria(lanc.categoria)}15` }}>{lanc.categoria}</span>}
                               </div>
                               <p className="text-[10px] font-mono text-slate-500">
-                                EMIT: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} // VENC: <span className={isAtrasado ? 'text-rose-500 font-bold bg-rose-500/10 px-1 rounded' : 'text-slate-400'}>{lanc.dataVencimento.split('-').reverse().join('/')}</span>
+                                Emissão: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} // Vencimento: <span className={isAtrasado ? 'text-rose-500 font-bold bg-rose-500/10 px-1 rounded' : 'text-slate-400'}>{lanc.dataVencimento.split('-').reverse().join('/')}</span>
                               </p>
                             </div>
                           </div>
@@ -491,7 +491,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                             </span>
                             <div className="flex items-center gap-2">
                               <button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className={`px-4 py-2 text-[10px] font-black uppercase font-mono rounded border transition-all disabled:opacity-30 ${lanc.status === 'pago' ? 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/50 hover:bg-emerald-500 hover:text-white shadow-[0_0_10px_rgba(52,211,153,0.1)]'}`}>
-                                {lanc.status === 'pago' ? 'UNDO' : 'EXEC'}
+                                {lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}
                               </button>
                               <button onClick={() => iniciarEdicao(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✏️</button>
                               <button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-rose-500 hover:bg-rose-500 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✕</button>

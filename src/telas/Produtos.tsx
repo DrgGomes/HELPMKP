@@ -13,22 +13,18 @@ interface ProdutosProps {
 }
 
 export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataformas, custosPadrao, categorias }: ProdutosProps) {
-  // Estados de Listagem
   const [busca, setBusca] = useState('');
   const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
   const [ordem, setOrdem] = useState<'recentes' | 'estoque_baixo' | 'lucro_alto'>('recentes');
 
-  // NOVO: Memória de Simulação de Metas (A sua ideia genial)
   const [metasSimuladas, setMetasSimuladas] = useState<Record<string, string>>({});
 
-  // NOVO: Modal do PDV (Ponto de Venda)
   const [pdvModal, setPdvModal] = useState<Produto | null>(null);
   const [pdvQtd, setPdvQtd] = useState<number>(1);
   const [pdvPlataforma, setPdvPlataforma] = useState<string>('');
   const [pdvValorFinal, setPdvValorFinal] = useState<string>('');
   const [processandoVenda, setProcessandoVenda] = useState(false);
 
-  // Estados de Cadastro (mantidos para não quebrar a tela de adicionar)
   const [foto, setFoto] = useState('');
   const [titulo, setTitulo] = useState('');
   const [codigo, setCodigo] = useState('');
@@ -40,11 +36,9 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const [estoque, setEstoque] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
 
-  // Lógica Matemática de Precificação Reversa para os Cards
   const calcularPrecoVendaCard = (produto: Produto, plat: Plataforma) => {
     const metaDoInput = metasSimuladas[produto.id] !== undefined ? parseFloat(metasSimuladas[produto.id]) || 0 : produto.valorLucro;
     
-    // Se o usuário escolheu porcentagem na criação, o cálculo é diferente, mas assumimos R$ por padrão no simulador
     const lucroReal = produto.tipoLucro === 'porcentagem' && metasSimuladas[produto.id] === undefined 
       ? produto.custoTotal * (produto.valorLucro / 100) 
       : metaDoInput;
@@ -55,7 +49,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     return (produto.custoTotal + lucroReal + taxasFixas) / (1 - comissaoDecimal);
   };
 
-  // Motor do PDV: Registrar Venda Instantânea
   const registrarVendaPDV = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!pdvModal || !pdvValorFinal) return;
@@ -63,11 +56,9 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
 
     setProcessandoVenda(true);
     try {
-      // 1. Dar baixa no estoque
       const novoEstoque = Math.max(0, (pdvModal.estoque || 0) - pdvQtd);
       await updateDoc(doc(db, 'usuarios', userId, 'produtos', pdvModal.id), { estoque: novoEstoque });
 
-      // 2. Registrar no Fluxo de Caixa Mestre
       const platNome = plataformas.find(p => p.id === pdvPlataforma)?.nome || 'Venda Direta / Balcão';
       await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
         tipo: 'receita',
@@ -77,7 +68,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
         dataLancamento: new Date().toISOString().split('T')[0],
         status: 'pago',
         categoria: 'Vendas de Produtos',
-        produtoId: pdvModal.id // Para relatórios futuros
+        produtoId: pdvModal.id
       });
 
       alert("🎉 Venda registrada com sucesso! Caixa e Estoque atualizados.");
@@ -91,7 +82,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     setProcessandoVenda(false);
   };
 
-  // Funções Antigas Mantidas (Exclusão e Cadastro)
   const lidarExcluir = async (id: string) => {
     const userId = auth.currentUser?.uid as string;
     if (userId && window.confirm("Excluir produto definitivamente?")) await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
@@ -122,7 +112,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     }).sort((a, b) => {
       if (ordem === 'estoque_baixo') return (a.estoque || 0) - (b.estoque || 0);
       if (ordem === 'lucro_alto') return b.valorLucro - a.valorLucro;
-      return 0; // Recentes (mantém a ordem do BD)
+      return 0; 
     });
   }, [produtos, busca, categoriaFiltro, ordem]);
 
@@ -205,23 +195,19 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
             return (
               <div key={produto.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 relative overflow-hidden group flex flex-col md:flex-row">
                 
-                {/* TARJA DE ESTOQUE */}
                 <div className={`absolute top-0 left-0 w-full h-1.5 ${semEstoque ? 'bg-rose-500' : estoqueCritico ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
 
-                {/* IMAGEM E INFO BÁSICA */}
                 <div className="md:w-56 p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col items-center justify-center bg-slate-50/50">
                   <div className="w-32 h-32 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden mb-4 relative">
                     {produto.foto ? <img src={produto.foto} alt={produto.titulo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <span className="text-4xl text-slate-300">📦</span>}
                     {semEstoque && <div className="absolute inset-0 bg-rose-500/80 flex items-center justify-center"><span className="text-white font-black text-xs uppercase tracking-widest rotate-[-15deg]">Esgotado</span></div>}
                   </div>
                   
-                  {/* BOTÃO PDV FRENTE DE CAIXA (NOVO) */}
                   <button onClick={() => setPdvModal(produto)} disabled={semEstoque} className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50 disabled:grayscale flex justify-center items-center gap-2">
                     🛒 Vender Rápido
                   </button>
                 </div>
 
-                {/* INFORMAÇÕES FINANCEIRAS E CALCULADORA */}
                 <div className="p-6 flex-1 flex flex-col justify-between">
                   <div>
                     <div className="flex justify-between items-start mb-2">
@@ -237,14 +223,12 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                       </div>
                     </div>
 
-                    {/* BARRA DE CUSTOS E SIMULADOR INLINE */}
                     <div className="flex flex-wrap items-center gap-3 my-4 bg-slate-50 p-2 rounded-xl border border-slate-100">
                       <div className="px-3 py-1.5 bg-white rounded-lg border border-slate-200 shadow-sm flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Custo Operacional:</span>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Custo Total:</span>
                         <span className="text-sm font-black text-slate-800">R$ {produto.custoTotal.toFixed(2)}</span>
                       </div>
                       
-                      {/* O SIMULADOR INLINE (A SUA IDEIA!) */}
                       <div className="flex items-center gap-1 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 focus-within:ring-2 focus-within:ring-emerald-400 transition-all shadow-sm">
                         <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Meta Limpa: R$</span>
                         <input 
@@ -258,7 +242,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                     </div>
                   </div>
 
-                  {/* CARDS DE MARKETPLACE RECALCULADOS EM TEMPO REAL */}
                   <div>
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 border-t border-slate-100 pt-3">Preços Sugeridos ao Vivo:</p>
                     {plataformas.length === 0 ? <p className="text-xs font-bold text-amber-500 bg-amber-50 px-3 py-1 rounded-lg">Sem taxas configuradas.</p> : (
@@ -268,7 +251,14 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                           return (
                             <div key={plat.id} className="bg-white border border-slate-200 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center min-w-[110px]">
                               <div className="flex items-center gap-1.5 mb-1 text-slate-500">
-                                <span className="text-sm">{plat.logo}</span>
+                                
+                                {/* CORREÇÃO DA IMAGEM DA LOGO AQUI */}
+                                {plat.logo.startsWith('http') ? (
+                                  <img src={plat.logo} alt={plat.nome} className="w-4 h-4 object-contain rounded-sm" />
+                                ) : (
+                                  <span className="text-sm">{plat.logo}</span>
+                                )}
+
                                 <span className="text-[9px] font-black uppercase truncate max-w-[70px]" title={plat.nome}>{plat.nome}</span>
                               </div>
                               <span className="font-black text-slate-900" style={{ color: plat.cor || '#0f172a' }}>R$ {preco.toFixed(2)}</span>
@@ -285,7 +275,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
         </div>
       )}
 
-      {/* MODAL DO PDV (PONTO DE VENDA EXPRESSO) */}
+      {/* MODAL DO PDV */}
       {pdvModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100">
@@ -314,7 +304,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido (Cliente pagou)</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">R$</span>
                   <input type="number" step="0.01" required placeholder="0.00" value={pdvValorFinal} onChange={e => setPdvValorFinal(e.target.value)} className="w-full pl-14 pr-4 py-5 bg-emerald-50 border border-emerald-200 focus:border-emerald-500 rounded-xl font-black text-3xl text-emerald-600 outline-none transition-all placeholder:text-emerald-300 shadow-inner" />
