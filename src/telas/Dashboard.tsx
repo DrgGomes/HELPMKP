@@ -3,13 +3,13 @@ import type { Produto, Plataforma, LancamentoFinanceiro, CategoriaDespesa } from
 
 interface DashboardProps {
   produtos: Produto[]; 
-  plataformas: Plataforma[]; 
+  plataformas: Plataforma[]; // Mantido aqui para o App.tsx não dar erro
   lancamentos: LancamentoFinanceiro[];
   categoriasDespesa: CategoriaDespesa[];
   setTelaAtiva: (tela: string) => void;
 }
 
-export default function Dashboard({ produtos, plataformas, lancamentos, categoriasDespesa, setTelaAtiva }: DashboardProps) {
+export default function Dashboard({ produtos, lancamentos, categoriasDespesa, setTelaAtiva }: DashboardProps) {
   const dataAtual = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(dataAtual.getMonth() + 1);
   const [anoFiltro, setAnoFiltro] = useState<number>(dataAtual.getFullYear());
@@ -18,7 +18,6 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
   const saldoGeralRealizado = lancamentos.filter(l => l.status === 'pago').reduce((acc, l) => acc + (l.tipo === 'receita' ? l.valor : -l.valor), 0);
   
   const faturasPagarAtrasadas = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.dataVencimento < dataAtual.toISOString().split('T')[0]);
-  const faturasReceberAtrasadas = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pendente' && l.dataVencimento < dataAtual.toISOString().split('T')[0]);
   
   const contasAPagarGlobal = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pendente').reduce((a, b) => a + b.valor, 0);
   const contasAReceberGlobal = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pendente').reduce((a, b) => a + b.valor, 0);
@@ -121,7 +120,7 @@ export default function Dashboard({ produtos, plataformas, lancamentos, categori
         </div>
       </header>
 
-      {/* MOTOR DE INSIGHTS PREDITIVOS (NOVIDADE ABSOLUTA) */}
+      {/* MOTOR DE INSIGHTS PREDITIVOS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {insights.slice(0,3).map((insight, idx) => (
           <div key={idx} className={`p-6 rounded-3xl border flex flex-col justify-between relative overflow-hidden transition-all hover:scale-[1.02] ${
