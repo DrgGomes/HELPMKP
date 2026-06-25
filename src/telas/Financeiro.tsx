@@ -27,13 +27,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [mesesRepetir, setMesesRepetir] = useState('12');
   const [processandoIA, setProcessandoIA] = useState(false);
 
-  // --- EDIÇÃO EM LOTE ---
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [categoriaLote, setCategoriaLote] = useState('');
   const [processandoLote, setProcessandoLote] = useState(false);
 
-  // --- FILTROS GLOBAIS ---
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
@@ -47,7 +45,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); 
 
-  // RASCUNHOS DOS FILTROS
   const [draftBusca, setDraftBusca] = useState('');
   const [draftMes, setDraftMes] = useState<number>(mesAtual);
   const [draftAno, setDraftAno] = useState<number>(anoAtual);
@@ -59,7 +56,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
   const [compraModal, setCompraModal] = useState<Compra | null>(null);
 
-  // --- CALENDÁRIO ---
   const [calMes, setCalMes] = useState<number>(mesAtual);
   const [calAno, setCalAno] = useState<number>(anoAtual);
   const [modoArrastar, setModoArrastar] = useState<'vencimento' | 'emissao'>('vencimento');
@@ -204,7 +200,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
   };
 
-  // --- LÓGICA DE EDIÇÃO EM LOTE ---
   const selecionarTodos = () => {
     if (selecionados.length === lancamentosFiltrados.length) setSelecionados([]);
     else setSelecionados(lancamentosFiltrados.map(l => l.id));
@@ -265,7 +260,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     return { receitas: rec, despesas: desp, saldo: rec - desp };
   }, [lancamentosFiltrados]);
 
-  // CALENDÁRIO LOGIC
   const diasCalendario = useMemo(() => {
     const primeiroDiaSemana = new Date(calAno, calMes - 1, 1).getDay();
     const totalDiasMes = new Date(calAno, calMes, 0).getDate();
@@ -335,12 +329,10 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       {abaAtiva === 'caixa' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in print:hidden">
           
-          {/* LADO ESQUERDO: INSERÇÃO (Painel Claro/Sólido) */}
           <div className="xl:col-span-4 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 h-fit sticky top-24">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h3 className="font-black text-xl text-slate-800 tracking-tight">{idEdicao ? 'Revisão de Registro' : 'Injeção de Dados'}</h3>
               
-              {/* BOTÃO DA IA COM CARA DE UPLINK */}
               <label className={`cursor-pointer group flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${processandoIA ? 'bg-slate-100 text-slate-400 pointer-events-none' : 'bg-slate-900 hover:bg-indigo-600 text-indigo-400 hover:text-white shadow-lg shadow-indigo-500/20 border border-indigo-500/30'}`}>
                 {processandoIA ? (
                   <><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Processando...</>
@@ -399,10 +391,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             </form>
           </div>
 
-          {/* LADO DIREITO: EXTRATO (Terminal Hacker Dark Mode) */}
           <div className="xl:col-span-8 space-y-6">
             
-            {/* Cards de Resumo Header */}
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">💰</div>
@@ -421,13 +411,10 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               </div>
             </div>
 
-            {/* O TERMINAL DE EXTRATO */}
             <div className="bg-[#0b1120] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden relative">
               
-              {/* Efeito Scanline do Terminal */}
               <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none z-0 opacity-20"></div>
 
-              {/* Header do Terminal */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50 relative z-10">
                 <div className="flex items-center gap-3">
                   <div className="flex gap-1.5">
@@ -438,22 +425,20 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">sys.log / extrato</p>
                 </div>
                 
-                {/* Botão de Lote com visual Hacker */}
                 <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`mt-4 sm:mt-0 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-lg transition-all border ${modoSelecao ? 'bg-rose-500/20 text-rose-400 border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.2)]' : 'bg-slate-800 text-blue-400 hover:text-white border-slate-700 hover:border-blue-500'}`}>
                   {modoSelecao ? '[ ✕ Abortar Buffer ]' : '[ 📝 Batch Edit ]'}
                 </button>
               </div>
 
-              {/* PAINEL DE CONTROLE DE LOTE NO TERMINAL */}
               {modoSelecao && (
                 <div className="bg-blue-900/20 border-b border-blue-500/30 p-4 flex flex-wrap gap-4 items-center justify-between relative z-10 animate-fade-in">
                   <div className="flex items-center gap-3">
-                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">>> Select_All</button>
+                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">&gt;&gt; Select_All</button>
                     <span className="text-xs font-mono text-blue-300 font-bold">[{selecionados.length} bytes selected]</span>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
                     <select value={categoriaLote} onChange={e => setCategoriaLote(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-700 rounded font-mono text-xs text-blue-400 outline-none focus:border-blue-500 flex-1">
-                      <option value="">>> SET_TARGET_DIR...</option>
+                      <option value="">&gt;&gt; SET_TARGET_DIR...</option>
                       {categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
                       <option value="Geral">/root/Geral</option>
                     </select>
@@ -464,12 +449,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 </div>
               )}
 
-              {/* LINHAS DO EXTRATO HACKER */}
               <div className="relative z-10">
                 {lancamentosFiltrados.length === 0 ? (
                   <div className="p-16 text-center">
                     <span className="text-4xl text-slate-700 block mb-3 font-mono">_</span>
-                    <p className="font-mono text-slate-500 text-sm uppercase tracking-widest">>> log empty. no data found.</p>
+                    <p className="font-mono text-slate-500 text-sm uppercase tracking-widest">&gt;&gt; log empty. no data found.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-slate-800/50">
@@ -599,7 +583,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             </div>
           </div></div>
 
-          {/* RODAPÉ RESUMO CALENDÁRIO */}
           <div className="mt-8 flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl gap-4 relative overflow-hidden">
             <div className="absolute top-0 right-1/2 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest relative z-10">Resumo: {new Date(calAno, calMes - 1).toLocaleString('pt-BR', { month: 'long' })}</p>
@@ -612,7 +595,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         </div>
       )}
 
-      {/* PDF e Modal Vale omitidos no código renderizado para visualização, mas funcionais */}
       <div id="relatorio-financeiro-pdf" className="hidden print:block w-full">
         <h1 className="text-2xl font-black text-slate-900 uppercase mb-6 border-b-2 border-slate-800 pb-2">Relatório Extraído</h1>
         <table className="w-full text-left text-xs border-collapse">
