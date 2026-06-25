@@ -12,6 +12,7 @@ import CriadorKit from './telas/CriadorKit';
 import Custos from './telas/Custos';
 import Fornecedores from './telas/Fornecedores';
 import Financeiro from './telas/Financeiro';
+import CalculadoraRapida from './telas/CalculadoraRapida';
 
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
@@ -24,7 +25,7 @@ export default function App() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [custosPadrao, setCustosPadrao] = useState<CustoPadrao[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
-  const [categoriasDespesa, setCategoriasDespesa] = useState<CategoriaDespesa[]>([]); // NOVO
+  const [categoriasDespesa, setCategoriasDespesa] = useState<CategoriaDespesa[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
@@ -68,11 +69,15 @@ export default function App() {
         <div className="flex items-center gap-2.5 mb-9 px-3 hidden md:flex"><div className="w-3 h-3 rounded-full bg-blue-500 shadow-lg shadow-blue-500/50"></div><h1 className="text-2xl font-black bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent">HelpMkp</h1></div>
         <nav className="space-y-1 flex-1">
           <button onClick={() => { setTelaAtiva('dashboard'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'dashboard' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>📊</span> Dashboard</button>
+          
           <div className="pt-6 pb-2"><p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Estoque & Vendas</p></div>
+          
+          <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'calculadora' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🧮</span> Calculadora Rápida</button>
           <button onClick={() => { setTelaAtiva('financeiro'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'financeiro' ? 'bg-emerald-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>💰</span> Fluxo de Caixa</button>
           <button onClick={() => { setTelaAtiva('fornecedores'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'fornecedores' ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🚚</span> Compras & Entradas</button>
           <button onClick={() => { setTelaAtiva('produto_cadastro'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'produto_cadastro' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>➕</span> Cadastrar Produto</button>
           <button onClick={() => { setTelaAtiva('produtos_lista'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'produtos_lista' ? 'bg-blue-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>📦</span> Meus Produtos</button>
+          
           <div className="pt-6 pb-2"><p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest">Ajustes Globais</p></div>
           <button onClick={() => { setTelaAtiva('ajustes_categorias'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'ajustes_categorias' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>🗂️</span> Ajustes & Categorias</button>
           <button onClick={() => { setTelaAtiva('configuracoes'); setMenuAberto(false); }} className={`w-full text-left py-2.5 px-4 rounded-xl text-sm font-bold transition-all flex items-center gap-3 ${telaAtiva === 'configuracoes' ? 'bg-slate-700 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-900'}`}><span>⚙️</span> Taxas & Cofre</button>
@@ -85,6 +90,10 @@ export default function App() {
       <div className="flex-1 overflow-auto bg-slate-50/50">
         <div className="max-w-7xl mx-auto w-full p-5 md:p-8 lg:p-10">
           {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} categoriasDespesa={categoriasDespesa} setTelaAtiva={setTelaAtiva} />}
+          
+          {/* TELA NOVA: CALCULADORA RÁPIDA */}
+          {telaAtiva === 'calculadora' && <CalculadoraRapida plataformas={plataformas} />}
+
           {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} categoriasDespesa={categoriasDespesa} />}
           {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
           {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos telaAtiva={telaAtiva} setTelaAtiva={setTelaAtiva} produtos={produtos} plataformas={plataformas} custosPadrao={custosPadrao} categorias={categorias} />}
