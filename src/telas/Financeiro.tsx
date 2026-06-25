@@ -116,9 +116,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       const catExiste = categoriasDespesa.find(c => c.nome.toLowerCase() === dadosExtraidos.categoria?.toLowerCase());
       setCategoria(catExiste ? catExiste.nome : (dadosExtraidos.categoria || 'Outros'));
       
-      alert("✅ IA leu o comprovante! Confirme e Salve.");
+      alert("✅ Uplink Concluído. Dados injetados no sistema. Confirme.");
     } catch (error: any) {
-      alert(`❌ Erro técnico IA:\n\n${error.message}`);
+      alert(`❌ Erro no Uplink:\n\n${error.message}`);
     } finally {
       setProcessandoIA(false); event.target.value = '';
     }
@@ -184,7 +184,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         await Promise.all(correspondentes.map(l => deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', l.id))));
       }
     } else {
-      if (window.confirm("Excluir permanentemente?")) await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id));
+      if (window.confirm("Excluir permanentemente do banco de dados?")) await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id));
     }
   };
 
@@ -211,8 +211,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   };
 
   const aplicarCategoriaEmMassa = async () => {
-    if (selecionados.length === 0) return alert("Selecione pelo menos um lançamento.");
-    if (!categoriaLote) return alert("Escolha a categoria que deseja aplicar.");
+    if (selecionados.length === 0) return alert("Selecione pelo menos um registro.");
+    if (!categoriaLote) return alert("Escolha a categoria.");
     const userId = auth.currentUser?.uid as string; if (!userId) return;
 
     setProcessandoLote(true);
@@ -223,10 +223,10 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         batch.update(ref, { categoria: categoriaLote });
       });
       await batch.commit();
-      alert(`✅ ${selecionados.length} lançamentos atualizados para "${categoriaLote}"!`);
+      alert(`✅ Buffer atualizado: ${selecionados.length} registros movidos para "${categoriaLote}".`);
       setModoSelecao(false); setSelecionados([]); setCategoriaLote('');
     } catch (error) {
-      console.error(error); alert("Erro ao atualizar em massa.");
+      console.error(error); alert("Falha na gravação em lote.");
     }
     setProcessandoLote(false);
   };
@@ -298,139 +298,234 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   };
 
   return (
-    <div className="animate-fade-in max-w-7xl mx-auto space-y-6 relative">
+    <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 10px; } .no-print { display: none !important; } }`}} />
 
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 no-print">
-        <div><h2 className="text-3xl font-black text-slate-800 flex items-center gap-2"><span>💰</span> Fluxo de Caixa Mestre</h2></div>
-        <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-5 py-3 rounded-xl font-bold flex items-center gap-2 border transition-all ${mostrarRelatorio ? 'bg-amber-100 text-amber-700 border-amber-300' : 'bg-white text-slate-700 border-slate-300 shadow-sm'}`}>🔍 Buscar & Filtros</button>
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
+        <div><h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2><p className="text-slate-500 font-medium mt-1">Gestão de liquidez, extrato hacker e previsibilidade.</p></div>
+        <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
+          <span className="text-lg">⚙️</span> {mostrarRelatorio ? 'Ocultar Filtros' : 'Filtros Avançados'}
+        </button>
       </header>
 
       {mostrarRelatorio && (
-        <div className="bg-white p-6 rounded-2xl border border-slate-300 shadow-lg space-y-5 no-print animate-fade-in">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-3 text-xs">
-            <div className="lg:col-span-2"><label className="block font-bold text-slate-500 uppercase mb-1">Buscar Palavra</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold outline-none" /></div>
-            <div><label className="block font-bold text-slate-500 uppercase mb-1">Mês</label><select value={draftMes} onChange={(e) => setDraftMes(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select></div>
-            <div><label className="block font-bold text-slate-500 uppercase mb-1">Ano</label><select value={draftAno} onChange={(e) => setDraftAno(Number(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value={0}>Todos</option><option value={2025}>2025</option><option value={2026}>2026</option></select></div>
-            <div className="lg:col-span-2"><label className="block font-bold text-rose-500 uppercase mb-1">Categoria Contábil</label><select value={draftCategoria} onChange={(e) => setDraftCategoria(e.target.value)} className="w-full p-2.5 bg-rose-50 border border-rose-200 rounded-lg font-bold text-rose-800 outline-none truncate"><option value="todos">Todas as Categorias</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
-            <div><label className="block font-bold text-slate-500 uppercase mb-1">Status</label><select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value as any)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="pago">Pagos</option></select></div>
-            <div><label className="block font-bold text-slate-500 uppercase mb-1">Fornecedor</label><select value={draftFornecedor} onChange={(e) => setDraftFornecedor(e.target.value)} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer</option><option value="">Avulsos</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl no-print animate-fade-in">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 text-xs">
+            <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Query</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="Buscar..." /></div>
+            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Mês</label><select value={draftMes} onChange={(e) => setDraftMes(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select></div>
+            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Ano</label><select value={draftAno} onChange={(e) => setDraftAno(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option><option value={2025}>2025</option><option value={2026}>2026</option></select></div>
+            <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Categoria</label><select value={draftCategoria} onChange={(e) => setDraftCategoria(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
+            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Status</label><select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value as any)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="pago">Pagos</option></select></div>
+            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Origem</label><select value={draftFornecedor} onChange={(e) => setDraftFornecedor(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Todos</option><option value="">Avulsos</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
           </div>
-          <div className="flex justify-end gap-3 pt-3 border-t border-slate-100"><button onClick={limparFiltros} className="px-5 py-2.5 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200">Limpar</button><button onClick={aplicarFiltros} className="px-6 py-2.5 bg-blue-600 text-white font-black rounded-xl text-xs shadow-md hover:bg-blue-700">🔍 Buscar Agora</button><button onClick={() => window.print()} className="px-6 py-2.5 bg-slate-900 text-white font-black rounded-xl text-xs">🖨️ PDF</button></div>
+          <div className="flex justify-end gap-3 pt-6 mt-6 border-t border-slate-100">
+            <button onClick={limparFiltros} className="px-6 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl text-xs hover:bg-slate-200 transition-colors">Limpar Buffer</button>
+            <button onClick={aplicarFiltros} className="px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl text-xs shadow-lg shadow-indigo-600/30 transition-colors tracking-widest uppercase">Executar Filtro</button>
+          </div>
         </div>
       )}
 
+      {/* ABAS PREMIUM */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px no-print">
-        <button onClick={() => setAbaAtiva('caixa')} className={`px-5 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'caixa' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>💵 Lançar & Extrato</button>
-        <button onClick={() => setAbaAtiva('fornecedores')} className={`px-5 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'fornecedores' ? 'bg-rose-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🏭 Dívidas Fornecedor</button>
-        <button onClick={() => setAbaAtiva('calendario')} className={`px-5 py-3 font-bold text-sm rounded-t-xl transition-all flex items-center gap-2 ${abaAtiva === 'calendario' ? 'bg-indigo-600 text-white shadow-md' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>📅 Calendário Arrastável</button>
+        <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Terminal Extrato</button>
+        <button onClick={() => setAbaAtiva('fornecedores')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'fornecedores' ? 'bg-rose-50 text-rose-600 border-t-2 border-rose-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Dívidas Fornecedor</button>
+        <button onClick={() => setAbaAtiva('calendario')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'calendario' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Calendário Operacional</button>
       </div>
 
       {abaAtiva === 'caixa' && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-fade-in print:hidden">
-          <div className="xl:col-span-4 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit sticky top-6">
-            <div className="flex justify-between items-center mb-5 border-b border-slate-100 pb-3">
-              <h3 className="font-black text-lg text-slate-800">{idEdicao ? '✏️ Editando' : '➕ Novo'} Lançamento</h3>
-              <label className={`cursor-pointer bg-gradient-to-r from-fuchsia-600 to-indigo-600 hover:from-fuchsia-500 hover:to-indigo-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-500/30 transition-all ${processandoIA ? 'opacity-50 pointer-events-none' : ''}`}>
-                {processandoIA ? '⏳ Analisando...' : '✨ Ler Recibo'}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in print:hidden">
+          
+          {/* LADO ESQUERDO: INSERÇÃO (Painel Claro/Sólido) */}
+          <div className="xl:col-span-4 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 h-fit sticky top-24">
+            <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
+              <h3 className="font-black text-xl text-slate-800 tracking-tight">{idEdicao ? 'Revisão de Registro' : 'Injeção de Dados'}</h3>
+              
+              {/* BOTÃO DA IA COM CARA DE UPLINK */}
+              <label className={`cursor-pointer group flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${processandoIA ? 'bg-slate-100 text-slate-400 pointer-events-none' : 'bg-slate-900 hover:bg-indigo-600 text-indigo-400 hover:text-white shadow-lg shadow-indigo-500/20 border border-indigo-500/30'}`}>
+                {processandoIA ? (
+                  <><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Processando...</>
+                ) : (
+                  <><span>👁️‍🗨️</span> Uplink OCR</>
+                )}
                 <input type="file" accept="image/*,application/pdf" onChange={lidarUploadComprovanteIA} className="hidden" />
               </label>
+
             </div>
-            <form onSubmit={lidarSalvar} className="space-y-4">
-              <div className="flex bg-slate-100 p-1.5 rounded-xl"><button type="button" onClick={() => { setTipo('despesa'); setFornSelecionado(''); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${tipo === 'despesa' ? 'bg-white text-rose-600 border border-slate-200' : 'text-slate-500'}`}>Despesa (-)</button><button type="button" onClick={() => { setTipo('receita'); setFornSelecionado(''); }} className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${tipo === 'receita' ? 'bg-white text-emerald-600 border border-slate-200' : 'text-slate-500'}`}>Receita (+)</button></div>
-              <input type="text" required placeholder="Descrição da conta" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium outline-none" />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="number" required step="0.01" placeholder="Valor (R$)" value={valor} onChange={(e) => setValor(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black outline-none" />
-                <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none">
-                  <option value="">Sem Categoria</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                </select>
+            
+            <form onSubmit={lidarSalvar} className="space-y-5">
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
+                <button type="button" onClick={() => { setTipo('despesa'); setFornSelecionado(''); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tipo === 'despesa' ? 'bg-white text-rose-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Saída</button>
+                <button type="button" onClick={() => { setTipo('receita'); setFornSelecionado(''); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tipo === 'receita' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Entrada</button>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Data Emissão</label><input type="date" required value={dataLancamento} onChange={(e) => setDataLancamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
-                <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Vencimento</label><input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
+              
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Descrição</label>
+                <input type="text" required placeholder="Ex: Pagamento Mercado Livre" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
               </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor</label>
+                  <div className="relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span>
+                    <input type="number" required step="0.01" placeholder="0.00" value={valor} onChange={(e) => setValor(e.target.value)} className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-lg font-black outline-none focus:border-indigo-500 font-mono text-slate-800" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Centro de Custo</label>
+                  <select value={categoria} onChange={(e) => setCategoria(e.target.value)} className="w-full px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none focus:border-indigo-500">
+                    <option value="">Geral</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+                  </select>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Data Emissão</label><input type="date" required value={dataLancamento} onChange={(e) => setDataLancamento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Vencimento</label><input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
+              </div>
+              
               {tipo === 'despesa' && (
-                <div className="bg-rose-50 p-3 rounded-xl border border-rose-100"><label className="block text-[10px] font-bold text-rose-500 uppercase mb-1">Vincular Fornecedor (Opcional)</label><select value={fornSelecionado} onChange={(e) => setFornSelecionado(e.target.value)} className="w-full px-3 py-2.5 bg-white border border-rose-200 rounded-lg text-sm font-bold text-slate-700 outline-none"><option value="">Nenhum</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Vincular a Fornecedor</label><select value={fornSelecionado} onChange={(e) => setFornSelecionado(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"><option value="">Nenhum (Avulso)</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
               )}
+              
               {!idEdicao && (
-                <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-2"><label className="flex items-center gap-2 font-bold text-slate-700 text-xs cursor-pointer select-none"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-4 h-4 accent-blue-600" />🔁 Repetir Lançamento (Mensal)?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Repetir por quantos meses?</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-3 py-2 border rounded-xl font-black text-sm text-blue-600" /></div>)}</div>
+                <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3"><label className="flex items-center gap-3 font-black text-indigo-900 text-xs cursor-pointer"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-5 h-5 accent-indigo-600" />🔁 Lançamento Recorrente?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1 mt-2">Duração (Meses)</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-4 py-3 border border-indigo-200 rounded-xl font-black text-lg text-indigo-600 bg-white outline-none" /></div>)}</div>
               )}
-              <div className="flex gap-2 pt-2"><button type="submit" className={`flex-1 py-3.5 rounded-xl font-black text-white shadow-md ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>{idEdicao ? 'Atualizar' : 'Salvar'}</button>{idEdicao && <button type="button" onClick={limparFormulario} className="px-5 bg-slate-200 text-slate-600 font-bold rounded-xl">Voltar</button>}</div>
+              
+              <div className="flex gap-3 pt-4 border-t border-slate-100">
+                <button type="submit" className={`flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{idEdicao ? 'Atualizar Bloco' : 'Injetar Registro'}</button>
+                {idEdicao && <button type="button" onClick={limparFormulario} className="px-6 bg-slate-200 text-slate-600 font-black uppercase text-xs rounded-xl hover:bg-slate-300">Abortar</button>}
+              </div>
             </form>
           </div>
 
-          <div className="xl:col-span-8 space-y-4">
+          {/* LADO DIREITO: EXTRATO (Terminal Hacker Dark Mode) */}
+          <div className="xl:col-span-8 space-y-6">
+            
+            {/* Cards de Resumo Header */}
             <div className="grid grid-cols-3 gap-4">
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Receitas (+)</p><p className="text-xl font-black text-emerald-600">R$ {resumoFiltrado.receitas.toFixed(2)}</p></div>
-              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 text-center"><p className="text-[10px] font-bold text-slate-500 uppercase">Despesas (-)</p><p className="text-xl font-black text-rose-600">R$ {resumoFiltrado.despesas.toFixed(2)}</p></div>
-              <div className="bg-slate-800 p-4 rounded-xl shadow-md border border-slate-900 text-center text-white"><p className="text-[10px] font-bold text-slate-400 uppercase">Saldo do Extrato</p><p className={`text-xl font-black ${resumoFiltrado.saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p></div>
+              <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">💰</div>
+                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Receitas Validadas</p>
+                <p className="text-2xl font-black text-white font-mono tracking-tight">R$ {resumoFiltrado.receitas.toFixed(2)}</p>
+              </div>
+              <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
+                <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">📉</div>
+                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Saídas Processadas</p>
+                <p className="text-2xl font-black text-white font-mono tracking-tight">R$ {resumoFiltrado.despesas.toFixed(2)}</p>
+              </div>
+              <div className="bg-black p-5 rounded-2xl shadow-[0_0_20px_rgba(52,211,153,0.1)] border border-emerald-900/50 flex flex-col justify-center relative overflow-hidden group">
+                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none"></div>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Saldo Líquido</p>
+                <p className={`text-2xl font-black font-mono tracking-tight relative z-10 ${resumoFiltrado.saldo >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p>
+              </div>
             </div>
 
-            <div className="bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+            {/* O TERMINAL DE EXTRATO */}
+            <div className="bg-[#0b1120] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden relative">
               
-              {/* O HEADER COM O BOTÃO DE EDIÇÃO EM MASSA */}
-              <div className="flex justify-between items-center px-4 pt-3 pb-3 border-b border-slate-100">
-                <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Extrato do Período</p>
-                <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`text-[10px] font-black uppercase px-3 py-1.5 rounded-lg transition-colors shadow-sm border ${modoSelecao ? 'bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'}`}>
-                  {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Lote'}
+              {/* Efeito Scanline do Terminal */}
+              <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none z-0 opacity-20"></div>
+
+              {/* Header do Terminal */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50 relative z-10">
+                <div className="flex items-center gap-3">
+                  <div className="flex gap-1.5">
+                    <span className="w-3 h-3 rounded-full bg-rose-500 opacity-80"></span>
+                    <span className="w-3 h-3 rounded-full bg-amber-500 opacity-80"></span>
+                    <span className="w-3 h-3 rounded-full bg-emerald-500 opacity-80"></span>
+                  </div>
+                  <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">sys.log / extrato</p>
+                </div>
+                
+                {/* Botão de Lote com visual Hacker */}
+                <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`mt-4 sm:mt-0 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-lg transition-all border ${modoSelecao ? 'bg-rose-500/20 text-rose-400 border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.2)]' : 'bg-slate-800 text-blue-400 hover:text-white border-slate-700 hover:border-blue-500'}`}>
+                  {modoSelecao ? '[ ✕ Abortar Buffer ]' : '[ 📝 Batch Edit ]'}
                 </button>
               </div>
 
-              {/* O PAINEL DE CONTROLE DE LOTE */}
+              {/* PAINEL DE CONTROLE DE LOTE NO TERMINAL */}
               {modoSelecao && (
-                <div className="m-3 p-4 bg-indigo-50 border border-indigo-100 rounded-xl flex flex-wrap gap-4 items-center justify-between animate-fade-in shadow-inner">
+                <div className="bg-blue-900/20 border-b border-blue-500/30 p-4 flex flex-wrap gap-4 items-center justify-between relative z-10 animate-fade-in">
                   <div className="flex items-center gap-3">
-                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase bg-white border border-indigo-200 text-indigo-600 px-3 py-2 rounded-lg shadow-sm hover:bg-indigo-100 transition-colors">Selecionar Todos</button>
-                    <span className="text-sm font-black text-indigo-900">{selecionados.length} selecionados</span>
+                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">>> Select_All</button>
+                    <span className="text-xs font-mono text-blue-300 font-bold">[{selecionados.length} bytes selected]</span>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
-                    <select value={categoriaLote} onChange={e => setCategoriaLote(e.target.value)} className="px-3 py-2 bg-white border border-indigo-200 rounded-lg text-sm font-bold text-slate-700 outline-none flex-1">
-                      <option value="">Escolher Nova Pasta...</option>
+                    <select value={categoriaLote} onChange={e => setCategoriaLote(e.target.value)} className="px-3 py-2 bg-slate-900 border border-slate-700 rounded font-mono text-xs text-blue-400 outline-none focus:border-blue-500 flex-1">
+                      <option value="">>> SET_TARGET_DIR...</option>
                       {categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-                      <option value="Geral">Limpar Categoria (Geral)</option>
+                      <option value="Geral">/root/Geral</option>
                     </select>
-                    <button onClick={aplicarCategoriaEmMassa} disabled={processandoLote || selecionados.length === 0 || !categoriaLote} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-lg text-sm shadow-md transition-all disabled:opacity-50">
-                      {processandoLote ? 'Aplicando...' : 'Aplicar Lote'}
+                    <button onClick={aplicarCategoriaEmMassa} disabled={processandoLote || selecionados.length === 0 || !categoriaLote} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-black font-mono rounded text-xs transition-all disabled:opacity-50">
+                      {processandoLote ? 'EXECUTING...' : 'RUN_SCRIPT'}
                     </button>
                   </div>
                 </div>
               )}
 
-              {lancamentosFiltrados.length === 0 ? <div className="p-10 text-center text-slate-400 font-bold">Nenhum lançamento encontrado.</div> : (
-                <div className="divide-y divide-slate-100">
-                  {lancamentosFiltrados.map(lanc => {
-                    const isAtrasado = lanc.status === 'pendente' && lanc.tipo === 'despesa' && lanc.dataVencimento < new Date().toISOString().split('T')[0];
-                    const selecionado = selecionados.includes(lanc.id);
+              {/* LINHAS DO EXTRATO HACKER */}
+              <div className="relative z-10">
+                {lancamentosFiltrados.length === 0 ? (
+                  <div className="p-16 text-center">
+                    <span className="text-4xl text-slate-700 block mb-3 font-mono">_</span>
+                    <p className="font-mono text-slate-500 text-sm uppercase tracking-widest">>> log empty. no data found.</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-slate-800/50">
+                    {lancamentosFiltrados.map(lanc => {
+                      const isAtrasado = lanc.status === 'pendente' && lanc.tipo === 'despesa' && lanc.dataVencimento < new Date().toISOString().split('T')[0];
+                      const selecionado = selecionados.includes(lanc.id);
 
-                    return (
-                      <div key={lanc.id} className={`p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors ${lanc.status === 'pago' ? 'bg-slate-50/50 opacity-60' : 'bg-white hover:bg-slate-50'} ${selecionado ? 'bg-indigo-50/50 border-l-4 border-indigo-500' : 'border-l-4 border-transparent'}`}>
-                        
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          {modoSelecao && (
-                            <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==lanc.id)); else setSelecionados([...selecionados, lanc.id]); }} className="w-5 h-5 accent-indigo-600 cursor-pointer shrink-0" />
-                          )}
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              {!modoSelecao && <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${lanc.tipo === 'despesa' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>}
-                              <p className={`font-black text-base truncate text-slate-800`}>{lanc.descricao}</p>
-                              {lanc.recorrente && <span className="bg-blue-50 text-blue-600 border border-blue-100 text-[9px] font-black px-1.5 py-0.5 rounded">🔁 Mensal</span>}
-                              {lanc.categoria && <span className="text-[9px] font-black px-1.5 py-0.5 rounded text-white shadow-sm" style={{ backgroundColor: getCorCategoria(lanc.categoria) }}>{lanc.categoria}</span>}
+                      return (
+                        <div key={lanc.id} className={`p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors hover:bg-slate-800/50 ${lanc.status === 'pago' ? 'opacity-60 grayscale-[50%]' : ''} ${selecionado ? 'bg-blue-900/20 border-l-4 border-l-blue-500' : 'border-l-4 border-transparent'}`}>
+                          
+                          <div className="flex items-center gap-4 flex-1 min-w-0">
+                            {modoSelecao && (
+                              <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==lanc.id)); else setSelecionados([...selecionados, lanc.id]); }} className="w-5 h-5 accent-blue-600 cursor-pointer shrink-0 rounded bg-slate-900 border-slate-700" />
+                            )}
+                            
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2.5 mb-1.5">
+                                {!modoSelecao && (
+                                  <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] ${lanc.tipo === 'despesa' ? 'bg-rose-500 text-rose-500' : 'bg-emerald-500 text-emerald-500'}`}></div>
+                                )}
+                                <p className={`font-bold text-sm truncate ${lanc.tipo === 'despesa' ? 'text-slate-200' : 'text-emerald-100'}`}>{lanc.descricao}</p>
+                                
+                                {lanc.recorrente && <span className="bg-blue-900/50 text-blue-400 border border-blue-500/30 text-[9px] font-black font-mono px-1.5 py-0.5 rounded">LOOP</span>}
+                                {lanc.categoria && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded border opacity-80" style={{ borderColor: getCorCategoria(lanc.categoria), color: getCorCategoria(lanc.categoria), backgroundColor: `${getCorCategoria(lanc.categoria)}15` }}>{lanc.categoria}</span>}
+                              </div>
+                              <p className="text-[10px] font-mono text-slate-500">
+                                EMIT: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} // VENC: <span className={isAtrasado ? 'text-rose-500 font-bold bg-rose-500/10 px-1 rounded' : 'text-slate-400'}>{lanc.dataVencimento.split('-').reverse().join('/')}</span>
+                              </p>
                             </div>
-                            <p className="text-xs font-bold text-slate-500">Emitido: {lanc.dataLancamento ? lanc.dataLancamento.split('-').reverse().join('/') : '---'} • Vence: <span className={isAtrasado ? 'text-rose-600 font-black' : ''}>{lanc.dataVencimento.split('-').reverse().join('/')}</span></p>
                           </div>
-                        </div>
 
-                        <div className="flex items-center gap-3"><span className={`font-black text-xl ${lanc.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>R$ {lanc.valor.toFixed(2)}</span><button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className="px-4 py-2 text-xs font-black uppercase rounded-xl border bg-white shadow-sm disabled:opacity-50">{lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}</button><button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="text-slate-300 hover:text-rose-500 p-1 disabled:opacity-50">🗑️</button></div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                          <div className="flex items-center justify-between sm:justify-end gap-5">
+                            <span className={`font-mono text-xl font-black tracking-tight ${lanc.tipo === 'despesa' ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              {lanc.tipo === 'despesa' ? '-' : '+'}R${lanc.valor.toFixed(2)}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className={`px-4 py-2 text-[10px] font-black uppercase font-mono rounded border transition-all disabled:opacity-30 ${lanc.status === 'pago' ? 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/50 hover:bg-emerald-500 hover:text-white shadow-[0_0_10px_rgba(52,211,153,0.1)]'}`}>
+                                {lanc.status === 'pago' ? 'UNDO' : 'EXEC'}
+                              </button>
+                              <button onClick={() => iniciarEdicao(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✏️</button>
+                              <button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-rose-500 hover:bg-rose-500 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✕</button>
+                            </div>
+                          </div>
+
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
       )}
 
+      {/* ABA 2: FORNECEDORES (Clean e Direto) */}
       {abaAtiva === 'fornecedores' && (
         <div className="space-y-6 animate-fade-in print:hidden pb-32">
           {relatorioFornecedores.length > 0 && (
@@ -438,18 +533,24 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           )}
           {relatorioFornecedores.length === 0 ? <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 font-bold text-slate-400">Nenhuma fatura de fornecedor vinculada.</div> : (
             relatorioFornecedores.map(forn => (
-              <div key={forn.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="bg-slate-900 p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
+              <div key={forn.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
+                <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
                   <div><h3 className="text-xl font-black">{forn.nome}</h3></div>
-                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Total Devido</p><p className="text-3xl font-black text-rose-400">R$ {forn.totalDevendo.toFixed(2)}</p></div>
+                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Total Pendente</p><p className="text-3xl font-black text-rose-400 font-mono tracking-tight">R$ {forn.totalDevendo.toFixed(2)}</p></div>
                 </div>
                 <div className="p-4 bg-slate-50"><div className="space-y-3">
                   {forn.faturas.map(fat => {
                     const compData = compras.find(c => c.id === fat.compraId);
                     return (
-                      <div key={fat.id} className="p-4 bg-white border border-slate-200 shadow-sm rounded-xl flex justify-between items-center">
-                        <div><p className="font-bold text-slate-800">{fat.descricao}</p><p className="text-xs text-slate-500">Vence: {fat.dataVencimento.split('-').reverse().join('/')}</p></div>
-                        <div className="flex items-center gap-3"><span className="font-black text-rose-600 text-lg">R$ {fat.valor.toFixed(2)}</span><div className="flex gap-1 bg-slate-100 p-1 rounded-lg"><button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-2.5 py-1 bg-white text-[10px] font-bold text-slate-600 rounded shadow-sm">+7 Dias</button><button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-2.5 py-1 bg-white text-[10px] font-bold text-slate-600 rounded shadow-sm">+15 Dias</button></div><div className="flex border border-slate-200 rounded-lg overflow-hidden"><button onClick={() => iniciarEdicao(fat)} className="px-3 py-2 bg-slate-50 text-xs font-bold">✏️</button><button onClick={() => excluirLancamento(fat)} className="px-3 py-2 bg-rose-50 text-rose-500 text-xs font-bold border-l">🗑️</button></div>{compData && <button onClick={() => setCompraModal(compData)} className="px-3 py-2 bg-slate-800 text-white rounded-lg text-xs font-black">📄 Vale</button>}<button onClick={() => alternarStatus(fat)} className="px-4 py-2 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-black uppercase">Pagar</button></div>
+                      <div key={fat.id} className="p-4 bg-white border border-slate-200 shadow-sm rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
+                        <div className="w-full md:w-auto"><p className="font-bold text-slate-800 text-sm">{fat.descricao}</p><p className="text-xs text-slate-500 mt-1 font-mono">Vence: {fat.dataVencimento.split('-').reverse().join('/')}</p></div>
+                        <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-end">
+                          <span className="font-black text-rose-600 text-lg font-mono">R$ {fat.valor.toFixed(2)}</span>
+                          <div className="flex gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200"><button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+7 Dias</button><button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+15 Dias</button></div>
+                          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm"><button onClick={() => iniciarEdicao(fat)} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm">✏️</button><button onClick={() => excluirLancamento(fat)} className="px-4 py-2.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 text-sm border-l border-slate-200 transition-colors">✕</button></div>
+                          {compData && <button onClick={() => setCompraModal(compData)} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md">📄 Ver Vale</button>}
+                          <button onClick={() => alternarStatus(fat)} className="px-5 py-2.5 bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-700 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors">Pagar</button>
+                        </div>
                       </div>
                     )
                   })}
@@ -458,29 +559,38 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             ))
           )}
           {relatorioFornecedores.length > 0 && (
-            <div className="bg-rose-900 p-8 rounded-3xl shadow-xl border border-rose-800 text-white flex flex-col md:flex-row justify-between items-center gap-6 mt-8"><div><h3 className="text-xl font-bold text-rose-200 uppercase tracking-widest mb-1">Risco Total em Fornecedores</h3><p className="text-sm text-rose-300">Soma de todas as faturas pendentes da fábrica (Independente de Mês).</p></div><div className="text-5xl font-black tracking-tight text-white bg-rose-950/50 px-6 py-4 rounded-2xl border border-rose-800/50">R$ {TOTAL_GERAL_DEVIDO.toFixed(2)}</div></div>
+            <div className="bg-rose-950 p-8 rounded-3xl shadow-xl border border-rose-900 text-white flex flex-col md:flex-row justify-between items-center gap-6 mt-8 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              <div className="relative z-10"><h3 className="text-xl font-black text-rose-300 uppercase tracking-widest mb-1">Risco Fornecedores</h3><p className="text-sm text-rose-400/80 font-medium">Soma de todas as faturas pendentes da fábrica.</p></div>
+              <div className="text-5xl font-black tracking-tight text-white bg-black/40 px-6 py-4 rounded-2xl border border-rose-500/30 relative z-10 font-mono shadow-[0_0_30px_rgba(225,29,72,0.2)]">R$ {TOTAL_GERAL_DEVIDO.toFixed(2)}</div>
+            </div>
           )}
         </div>
       )}
 
+      {/* ABA 3: CALENDÁRIO */}
       {abaAtiva === 'calendario' && (
-        <div className="bg-white p-6 rounded-3xl shadow-xl border border-slate-200 animate-fade-in print:hidden">
-          <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black text-slate-800">Calendário de Movimentações</h3>
-            <div className="flex bg-slate-900 p-1.5 rounded-xl shadow-inner border border-slate-800 mr-4"><button onClick={() => setModoArrastar('vencimento')} className={`px-4 py-2 text-xs font-black rounded-lg transition-all uppercase ${modoArrastar === 'vencimento' ? 'bg-indigo-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>🎯 Vencimentos</button><button onClick={() => setModoArrastar('emissao')} className={`px-4 py-2 text-xs font-black rounded-lg transition-all uppercase ${modoArrastar === 'emissao' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-400 hover:text-white'}`}>📄 Emissões</button></div>
-            <div className="flex gap-2"><button onClick={() => mudarMesCal(-1)} className="p-2 bg-slate-100 rounded-lg font-bold">◀ Mês Anterior</button><h3 className="text-lg font-black text-slate-800 w-32 text-center uppercase tracking-wider self-center">{new Date(calAno, calMes - 1).toLocaleString('pt-BR', { month: 'short' })} {calAno}</h3><button onClick={() => mudarMesCal(1)} className="p-2 bg-slate-100 rounded-lg font-bold">Próximo Mês ▶</button></div>
+        <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 animate-fade-in print:hidden">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
+            <h3 className="text-2xl font-black text-slate-800 tracking-tight">Calendário Drag & Drop</h3>
+            <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+              <div className="flex bg-slate-100 p-1.5 rounded-2xl shadow-inner border border-slate-200"><button onClick={() => setModoArrastar('vencimento')} className={`px-6 py-2.5 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest ${modoArrastar === 'vencimento' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'}`}>Alvo: Vencimento</button><button onClick={() => setModoArrastar('emissao')} className={`px-6 py-2.5 text-[10px] font-black rounded-xl transition-all uppercase tracking-widest ${modoArrastar === 'emissao' ? 'bg-rose-500 text-white shadow-md' : 'text-slate-500 hover:text-slate-800 hover:bg-white/50'}`}>Alvo: Emissão</button></div>
+              <div className="flex gap-2 bg-slate-900 p-1.5 rounded-2xl shadow-lg border border-slate-800"><button onClick={() => mudarMesCal(-1)} className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors">◀</button><h3 className="text-sm font-black text-white w-32 text-center uppercase tracking-widest self-center">{new Date(calAno, calMes - 1).toLocaleString('pt-BR', { month: 'short' })} {calAno}</h3><button onClick={() => mudarMesCal(1)} className="p-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-colors">▶</button></div>
+            </div>
           </div>
-          <div className="w-full overflow-x-auto"><div className="min-w-[800px]">
-            <div className="grid grid-cols-7 bg-slate-800 text-white rounded-t-xl overflow-hidden">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => <div key={d} className="p-3 text-center text-xs font-black uppercase">{d}</div>)}</div>
-            <div className="grid grid-cols-7 border-l border-slate-200">
+          <div className="w-full overflow-x-auto rounded-2xl border border-slate-200"><div className="min-w-[900px]">
+            <div className="grid grid-cols-7 bg-slate-900 text-white overflow-hidden">{['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(d => <div key={d} className="p-4 text-center text-xs font-black uppercase tracking-widest">{d}</div>)}</div>
+            <div className="grid grid-cols-7 bg-slate-50">
               {diasCalendario.map((dataStr, index) => {
-                if (!dataStr) return <div key={`e-${index}`} className="bg-slate-50 border-r border-b border-slate-200 min-h-[120px]"></div>;
+                if (!dataStr) return <div key={`e-${index}`} className="bg-slate-100 border-r border-b border-slate-200 min-h-[140px]"></div>;
                 const faturasDoDia = lancamentosDoCalendario.filter(l => (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)) === dataStr);
+                const isHoje = dataStr === new Date().toISOString().split('T')[0];
                 return (
-                  <div key={dataStr} onDragOver={lidarDragOver} onDrop={(e) => lidarDrop(e, dataStr)} className="min-h-[120px] p-2 border-r border-b border-slate-200 bg-white">
-                    <p className="text-xs font-black text-slate-400 mb-2">{parseInt(dataStr.split('-')[2])}</p>
-                    <div className="space-y-1">{faturasDoDia.map(fat => (
-                      <div key={fat.id} draggable onDragStart={(e) => lidarDragStart(e, fat.id)} className={`p-1 text-[9px] border-l-4 rounded shadow-sm cursor-grab ${fat.tipo === 'despesa' ? 'bg-rose-50 border-rose-500 text-rose-800' : 'bg-emerald-50 border-emerald-500 text-emerald-800'}`}>
-                        <p className="truncate font-bold">{fat.descricao}</p><p className="font-black">R$ {fat.valor.toFixed(2)}</p>
+                  <div key={dataStr} onDragOver={lidarDragOver} onDrop={(e) => lidarDrop(e, dataStr)} className={`min-h-[140px] p-2 border-r border-b border-slate-200 transition-colors hover:bg-blue-50/50 ${isHoje ? 'bg-indigo-50/30' : 'bg-white'}`}>
+                    <p className={`text-xs font-black mb-2 flex justify-between ${isHoje ? 'text-indigo-600' : 'text-slate-400'}`}><span>{parseInt(dataStr.split('-')[2])}</span> {isHoje && <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse"></span>}</p>
+                    <div className="space-y-1.5">{faturasDoDia.map(fat => (
+                      <div key={fat.id} draggable onDragStart={(e) => lidarDragStart(e, fat.id)} className={`p-1.5 text-[10px] rounded-lg shadow-sm cursor-grab border ${fat.status === 'pago' ? 'opacity-40 grayscale' : ''} ${fat.tipo === 'despesa' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-emerald-50 border-emerald-200 text-emerald-800'}`}>
+                        <p className="truncate font-bold mb-0.5">{fat.descricao}</p><p className="font-black font-mono tracking-tight">R$ {fat.valor.toFixed(2)}</p>
                       </div>
                     ))}</div>
                   </div>
@@ -489,24 +599,20 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             </div>
           </div></div>
 
-          {/* O RODAPÉ RESUMO DO CALENDÁRIO ESTÁ DE VOLTA! */}
-          <div className="mt-6 flex flex-col md:flex-row justify-between items-center bg-slate-50 p-4 rounded-xl border border-slate-200 gap-4">
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Resumo do Mês Vizualizado</p>
-            <div className="flex gap-6">
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-emerald-600 uppercase">Receitas (+)</p>
-                <p className="font-black text-slate-800 text-lg">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'receita' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] font-bold text-rose-600 uppercase">Despesas (-)</p>
-                <p className="font-black text-slate-800 text-lg">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'despesa' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p>
-              </div>
+          {/* RODAPÉ RESUMO CALENDÁRIO */}
+          <div className="mt-8 flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl gap-4 relative overflow-hidden">
+            <div className="absolute top-0 right-1/2 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest relative z-10">Resumo: {new Date(calAno, calMes - 1).toLocaleString('pt-BR', { month: 'long' })}</p>
+            <div className="flex gap-8 relative z-10">
+              <div className="text-right"><p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Receitas (+)</p><p className="font-black text-white text-2xl font-mono">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'receita' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p></div>
+              <div className="w-px bg-slate-800"></div>
+              <div className="text-right"><p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Despesas (-)</p><p className="font-black text-white text-2xl font-mono">R$ {lancamentosDoCalendario.filter(l => l.tipo === 'despesa' && (modoArrastar === 'vencimento' ? l.dataVencimento : (l.dataLancamento || l.dataVencimento)).startsWith(`${calAno}-${String(calMes).padStart(2,'0')}`)).reduce((a,b)=>a+b.valor,0).toFixed(2)}</p></div>
             </div>
           </div>
-
         </div>
       )}
 
+      {/* PDF e Modal Vale omitidos no código renderizado para visualização, mas funcionais */}
       <div id="relatorio-financeiro-pdf" className="hidden print:block w-full">
         <h1 className="text-2xl font-black text-slate-900 uppercase mb-6 border-b-2 border-slate-800 pb-2">Relatório Extraído</h1>
         <table className="w-full text-left text-xs border-collapse">
@@ -516,13 +622,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       </div>
 
       {compraModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-center items-center p-4 animate-fade-in no-print">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center"><div><p className="text-xs text-slate-400 font-bold uppercase mb-1">Recibo do Vale</p><h3 className="text-2xl font-black">{compraModal.codigoOrdem}</h3></div><button onClick={() => setCompraModal(null)} className="w-10 h-10 bg-slate-800 rounded-full font-black text-xl">✕</button></div>
-            <div className="p-6 overflow-y-auto"><div className="grid grid-cols-2 gap-4 mb-6 border-b pb-6"><div><p className="text-[10px] font-bold text-slate-400 uppercase">Fornecedor</p><p className="font-black text-slate-800 text-lg">{compraModal.fornecedorNome}</p></div><div className="text-right"><p className="text-[10px] font-bold text-slate-400 uppercase">NF / Vale Relacionado</p><p className="font-black text-slate-800 text-lg">{compraModal.numeroVale || 'N/A'}</p></div></div>
-              <div className="space-y-2 mb-6">{compraModal.itens.map(item => (<div key={item.produtoId} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100"><div><p className="font-bold text-slate-800 text-sm">{item.nome}</p><p className="text-[10px] font-bold text-slate-500">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div><span className="font-black text-slate-700">R$ {item.subtotal.toFixed(2)}</span></div>))}</div>
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in no-print">
+          <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-slate-200">
+            <div className="bg-slate-900 p-8 text-white flex justify-between items-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-40 h-40 bg-blue-500/20 rounded-full blur-2xl"></div>
+              <div className="relative z-10"><p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mb-2 flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Detalhes do Vale</p><h3 className="text-3xl font-black tracking-tight">{compraModal.codigoOrdem}</h3></div>
+              <button onClick={() => setCompraModal(null)} className="w-12 h-12 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors relative z-10">✕</button>
             </div>
-            <div className="bg-slate-100 p-6 border-t border-slate-200 flex justify-between items-center mt-auto"><button onClick={() => excluirValeInteiro(compraModal.id)} className="px-4 py-2 text-rose-600 bg-rose-50 border border-rose-200 rounded-lg text-xs font-black">🗑️ Excluir Vale Completo</button><div className="text-right"><p className="font-bold text-slate-500 uppercase">Total do Vale</p><p className="text-3xl font-black text-slate-900">R$ {compraModal.valorTotal.toFixed(2)}</p></div></div>
+            <div className="p-8 overflow-y-auto"><div className="grid grid-cols-2 gap-6 mb-8 border-b border-slate-100 pb-8"><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fornecedor</p><p className="font-black text-slate-800 text-xl">{compraModal.fornecedorNome}</p></div><div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">NF / Vale Relacionado</p><p className="font-black text-slate-800 text-xl font-mono">{compraModal.numeroVale || 'N/A'}</p></div></div>
+              <div className="space-y-3 mb-6">{compraModal.itens.map(item => (<div key={item.produtoId} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100"><div><p className="font-black text-slate-800">{item.nome}</p><p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">{item.quantidade} UN x R$ {item.custoUnitario.toFixed(2)}</p></div><span className="font-black text-slate-900 text-lg font-mono tracking-tight">R$ {item.subtotal.toFixed(2)}</span></div>))}</div>
+            </div>
+            <div className="bg-slate-50 p-8 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-6 mt-auto"><button onClick={() => excluirValeInteiro(compraModal.id)} className="px-6 py-3 text-rose-600 hover:text-white bg-white hover:bg-rose-600 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-widest transition-colors w-full sm:w-auto">🗑️ Excluir Vale Completo</button><div className="text-center sm:text-right w-full sm:w-auto"><p className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-1">Total do Vale</p><p className="text-4xl font-black text-slate-900 font-mono tracking-tight">R$ {compraModal.valorTotal.toFixed(2)}</p></div></div>
           </div>
         </div>
       )}
