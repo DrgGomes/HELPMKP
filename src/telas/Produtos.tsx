@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { collection, doc, deleteDoc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, doc, deleteDoc, updateDoc, addDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { Produto, Plataforma, CustoPadrao, Categoria } from '../types';
 
@@ -39,6 +39,13 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const [valorLucro, setValorLucro] = useState('');
   const [estoque, setEstoque] = useState('');
   const [estoqueMinimo, setEstoqueMinimo] = useState('');
+
+  // LÓGICA DE EDIÇÃO EM MASSA DE ESTOQUE (Enterprise 5.0)
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [estoqueLote, setEstoqueLote] = useState('');
+  const [operacaoLote, setOperacaoLote] = useState<'definir' | 'somar'>('definir');
+  const [processandoLote, setProcessandoLote] = useState(false);
 
   const limparFormulario = () => {
     setIdEdicao(null); setFoto(''); setTitulo(''); setCodigo('');
@@ -104,6 +111,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     setValorLucro(produto.valorLucro.toString());
     setEstoque((produto.estoque || 0).toString());
     setEstoqueMinimo((produto.estoqueMinimo || 0).toString());
+    setModoSelecao(false);
     setTelaAtiva('produto_cadastro');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -117,9 +125,55 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
       if (!isNaN(qtd) && qtd >= 0) {
         await updateDoc(doc(db, 'usuarios', userId, 'produtos', produto.id), { estoque: qtd });
       } else {
-        alert("Quantidade inválida. Digite apenas números.");
+        alert("Quantidade inválida. Digite apenas números válidos.");
       }
     }
+  };
+
+  // --- FUNÇÕES DE LOTE (MÁGICA) ---
+  const selecionarTodos = () => {
+    if (selecionados.length === produtosFiltrados.length) setSelecionados([]);
+    else setSelecionados(produtosFiltrados.map(p => p.id));
+  };
+
+  const aplicarEstoqueEmMassa = async () => {
+    if (selecionados.length === 0) return alert("Selecione pelo menos um produto na lista.");
+    if (estoqueLote === '') return alert("Digite o valor para atualizar o estoque.");
+    
+    const qtdLote = parseInt(estoqueLote);
+    if (isNaN(qtdLote)) return alert("Valor inválido. Digite apenas números.");
+    
+    const userId = auth.currentUser?.uid as string; if (!userId) return;
+
+    setProcessandoLote(true);
+    try {
+      const batch = writeBatch(db);
+      
+      selecionados.forEach(id => {
+        const ref = doc(db, 'usuarios', userId, 'produtos', id);
+        
+        if (operacaoLote === 'definir') {
+          // Zera o passado e define o número absoluto
+          batch.update(ref, { estoque: Math.max(0, qtdLote) });
+        } else {
+          // Operação 'somar' (Se digitar negativo, ele subtrai)
+          const prodAtual = produtos.find(p => p.id === id);
+          const estoqueExistente = prodAtual?.estoque || 0;
+          const novoEstoqueSomado = Math.max(0, estoqueExistente + qtdLote);
+          batch.update(ref, { estoque: novoEstoqueSomado });
+        }
+      });
+
+      await batch.commit();
+      alert(`✅ Buffer Executado! Estoque de ${selecionados.length} produtos atualizado.`);
+      setModoSelecao(false); 
+      setSelecionados([]); 
+      setEstoqueLote('');
+    } catch (error) {
+      console.error(error); 
+      alert("Falha ao gravar os dados em lote.");
+    }
+    setProcessandoLote(false);
   };
 
   const lidarExcluir = async (id: string) => {
@@ -247,21 +301,64 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
 
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        <div><h2 className="text-4xl font-black text-slate-800 tracking-tight">Estoque Ativo</h2><p className="text-slate-500 font-medium mt-1">Gerencie preços, estoque e ative o PDV Expresso.</p></div>
-        <div className="flex flex-wrap gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
-          <input type="text" placeholder="🔍 Buscar Título ou Cód..." value={busca} onChange={e => setBusca(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold w-48 outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-          <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">
-            <option value="Todas">Categorias</option>
-            {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-          </select>
-          <select value={ordem} onChange={e => setOrdem(e.target.value as any)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">
-            <option value="recentes">Mais Recentes</option>
-            <option value="estoque_baixo">Estoque Crítico</option>
-            <option value="lucro_alto">Maior Lucro Limpo</option>
-          </select>
+      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+        <div>
+          <h2 className="text-4xl font-black text-slate-800 tracking-tight">Estoque Ativo</h2>
+          <p className="text-slate-500 font-medium mt-1">Gerencie preços, controle furos de estoque e ative o PDV Expresso.</p>
+        </div>
+        
+        <div className="flex flex-col md:flex-row gap-4 w-full lg:w-auto">
+          <div className="flex flex-wrap gap-3 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+            <input type="text" placeholder="🔍 Buscar Título ou Cód..." value={busca} onChange={e => setBusca(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold w-full sm:w-48 outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
+            <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none flex-1 sm:flex-none">
+              <option value="Todas">Categorias</option>
+              {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
+            <select value={ordem} onChange={e => setOrdem(e.target.value as any)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none flex-1 sm:flex-none">
+              <option value="recentes">Mais Recentes</option>
+              <option value="estoque_baixo">Estoque Crítico</option>
+              <option value="lucro_alto">Maior Lucro Limpo</option>
+            </select>
+          </div>
+          
+          <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`px-6 py-3 font-black text-xs uppercase tracking-widest rounded-2xl border shadow-sm transition-colors whitespace-nowrap ${modoSelecao ? 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}>
+            {modoSelecao ? '✕ Fechar Edição' : '📦 Edição Lote'}
+          </button>
         </div>
       </header>
+
+      {/* PAINEL DE CONTROLE DE LOTE (MÁGICO) */}
+      {modoSelecao && (
+        <div className="bg-gradient-to-r from-indigo-900 to-blue-900 p-6 rounded-3xl shadow-xl flex flex-col md:flex-row flex-wrap gap-6 items-center justify-between animate-fade-in relative overflow-hidden border border-indigo-700">
+          <div className="absolute top-0 right-1/4 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+          
+          <div className="flex items-center gap-4 relative z-10 w-full md:w-auto">
+            <button onClick={selecionarTodos} className="text-[10px] font-black uppercase tracking-widest bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2.5 rounded-xl shadow-sm transition-all">
+              Selecionar Todos
+            </button>
+            <span className="text-sm font-black text-indigo-200 bg-black/20 px-3 py-1.5 rounded-lg">{selecionados.length} Itens Mapeados</span>
+          </div>
+
+          <div className="flex items-center gap-3 w-full md:w-auto relative z-10 bg-black/20 p-2 rounded-2xl border border-white/10">
+            <select value={operacaoLote} onChange={e => setOperacaoLote(e.target.value as 'definir' | 'somar')} className="px-3 py-2.5 bg-indigo-950 border border-indigo-800 rounded-xl font-black text-xs text-indigo-200 outline-none focus:border-indigo-400">
+              <option value="definir">Cravar Valor Absoluto (=)</option>
+              <option value="somar">Somar/Dar Entrada (+/-)</option>
+            </select>
+            
+            <input 
+              type="number" 
+              placeholder={operacaoLote === 'definir' ? 'Novo Estoque Exato' : 'Qtd para Somar (+)'}
+              value={estoqueLote} 
+              onChange={e => setEstoqueLote(e.target.value)} 
+              className="w-48 px-4 py-2.5 bg-white border border-indigo-200 rounded-xl font-black text-sm text-indigo-900 outline-none focus:ring-2 focus:ring-blue-400" 
+            />
+            
+            <button onClick={aplicarEstoqueEmMassa} disabled={processandoLote || selecionados.length === 0} className="px-6 py-2.5 bg-blue-500 hover:bg-blue-400 text-white font-black uppercase tracking-widest rounded-xl text-xs transition-all shadow-[0_0_15px_rgba(59,130,246,0.4)] disabled:opacity-50 disabled:grayscale">
+              {processandoLote ? 'Executando...' : 'Aplicar Lote'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {produtosFiltrados.length === 0 ? (
         <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200"><span className="text-6xl mb-4 grayscale block">📦</span><p className="text-xl font-black text-slate-400">Seu centro de distribuição está vazio.</p></div>
@@ -270,24 +367,33 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
           {produtosFiltrados.map(produto => {
             const estoqueCritico = (produto.estoque || 0) <= (produto.estoqueMinimo || 5);
             const semEstoque = (produto.estoque || 0) === 0;
+            const selecionado = selecionados.includes(produto.id);
 
             return (
-              <div key={produto.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 hover:shadow-xl transition-all duration-300 relative overflow-hidden group flex flex-col md:flex-row">
+              <div key={produto.id} className={`bg-white rounded-3xl shadow-sm transition-all duration-300 relative overflow-hidden group flex flex-col md:flex-row ${selecionado ? 'border-2 border-indigo-500 shadow-indigo-500/20' : 'border border-slate-200 hover:shadow-xl'}`}>
                 
-                <div className={`absolute top-0 left-0 w-full h-1.5 ${semEstoque ? 'bg-rose-500' : estoqueCritico ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
+                <div className={`absolute top-0 left-0 w-full h-1.5 ${selecionado ? 'bg-indigo-500' : semEstoque ? 'bg-rose-500' : estoqueCritico ? 'bg-amber-500' : 'bg-emerald-500'}`}></div>
 
-                <div className="md:w-56 p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col items-center justify-center bg-slate-50/50">
-                  <div className="w-32 h-32 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden mb-4 relative">
-                    {produto.foto ? <img src={produto.foto} alt={produto.titulo} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" /> : <span className="text-4xl text-slate-300">📦</span>}
+                <div className={`md:w-56 p-6 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col items-center justify-center relative ${selecionado ? 'bg-indigo-50/30' : 'bg-slate-50/50'}`}>
+                  
+                  {/* CAIXA DE SELEÇÃO NO CARD */}
+                  {modoSelecao && (
+                    <div className="absolute top-4 left-4 z-10">
+                      <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==produto.id)); else setSelecionados([...selecionados, produto.id]); }} className="w-6 h-6 accent-indigo-600 cursor-pointer rounded-lg shadow-sm" />
+                    </div>
+                  )}
+
+                  <div className="w-32 h-32 bg-white rounded-2xl shadow-sm border border-slate-200 flex items-center justify-center overflow-hidden mb-4 relative mt-2">
+                    {produto.foto ? <img src={produto.foto} alt={produto.titulo} className={`w-full h-full object-cover transition-transform duration-500 ${selecionado ? 'scale-110' : 'group-hover:scale-110'}`} /> : <span className="text-4xl text-slate-300">📦</span>}
                     {semEstoque && <div className="absolute inset-0 bg-rose-500/80 flex items-center justify-center"><span className="text-white font-black text-xs uppercase tracking-widest rotate-[-15deg]">Esgotado</span></div>}
                   </div>
                   
-                  <button onClick={() => setPdvModal(produto)} disabled={semEstoque} className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all disabled:opacity-50 disabled:grayscale flex justify-center items-center gap-2">
+                  <button onClick={() => setPdvModal(produto)} disabled={semEstoque || modoSelecao} className="w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-blue-500/30 transition-all disabled:opacity-30 disabled:grayscale flex justify-center items-center gap-2">
                     🛒 Vender Rápido
                   </button>
                 </div>
 
-                <div className="p-6 flex-1 flex flex-col justify-between">
+                <div className={`p-6 flex-1 flex flex-col justify-between ${selecionado ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <div>
@@ -336,7 +442,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                             <div key={plat.id} className="bg-white border border-slate-200 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center min-w-[110px]">
                               <div className="flex items-center gap-1.5 mb-1 text-slate-500">
                                 
-                                {/* O BUG DA LOGO ESTÁ CORRIGIDO AQUI */}
+                                {/* CORREÇÃO DA IMAGEM DA LOGO AQUI */}
                                 {plat.logo.startsWith('http') || plat.logo.startsWith('data:') ? (
                                   <img src={plat.logo} alt={plat.nome} className="w-4 h-4 object-contain rounded-sm shrink-0" />
                                 ) : (
@@ -388,7 +494,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido (Cliente pagou)</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">R$</span>
                   <input type="number" step="0.01" required placeholder="0.00" value={pdvValorFinal} onChange={e => setPdvValorFinal(e.target.value)} className="w-full pl-14 pr-4 py-5 bg-emerald-50 border border-emerald-200 focus:border-emerald-500 rounded-xl font-black text-3xl text-emerald-600 outline-none transition-all placeholder:text-emerald-300 shadow-inner" />
