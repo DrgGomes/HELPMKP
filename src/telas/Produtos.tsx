@@ -13,22 +13,18 @@ categorias: Categoria[];
 }
 
 export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataformas, custosPadrao, categorias }: ProdutosProps) {
-// Estados de Listagem
 const [busca, setBusca] = useState('');
 const [categoriaFiltro, setCategoriaFiltro] = useState('Todas');
 const [ordem, setOrdem] = useState<'recentes' | 'estoque_baixo' | 'lucro_alto'>('recentes');
 
-// Memória de Simulação de Metas
 const [metasSimuladas, setMetasSimuladas] = useState<Record<string, string>>({});
 
-// Modal do PDV (Ponto de Venda)
 const [pdvModal, setPdvModal] = useState<Produto | null>(null);
 const [pdvQtd, setPdvQtd] = useState(1);
 const [pdvPlataforma, setPdvPlataforma] = useState('');
 const [pdvValorFinal, setPdvValorFinal] = useState('');
 const [processandoVenda, setProcessandoVenda] = useState(false);
 
-// Estados de Cadastro e Edição
 const [idEdicao, setIdEdicao] = useState<string | null>(null);
 const [foto, setFoto] = useState('');
 const [titulo, setTitulo] = useState('');
@@ -49,10 +45,9 @@ setTipoLucro('reais'); setValorLucro(''); setEstoque(''); setEstoqueMinimo('');
 
 const calcularPrecoVendaCard = (produto: Produto, plat: Plataforma) => {
 const metaDoInput = metasSimuladas[produto.id] !== undefined ? parseFloat(metasSimuladas[produto.id]) || 0 : produto.valorLucro;
-
-const lucroReal = produto.tipoLucro === 'porcentagem' && metasSimuladas[produto.id] === undefined 
-  ? produto.custoTotal * (produto.valorLucro / 100) 
-  : metaDoInput;
+const lucroReal = produto.tipoLucro === 'porcentagem' && metasSimuladas[produto.id] === undefined
+? produto.custoTotal * (produto.valorLucro / 100)
+: metaDoInput;
 
 const comissaoDecimal = (plat.comissao + (plat.comissaoAfiliado || 0)) / 100;
 if (comissaoDecimal >= 1) return 0;
@@ -111,11 +106,6 @@ setTelaAtiva('produto_cadastro');
 window.scrollTo({ top: 0, behavior: 'smooth' });
 };
 
-const lidarExcluir = async (id: string) => {
-const userId = auth.currentUser?.uid as string;
-if (userId && window.confirm("Excluir produto definitivamente?")) await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
-};
-
 const ajustarEstoqueRapido = async (produto: Produto) => {
 const userId = auth.currentUser?.uid as string; if (!userId) return;
 const novo = window.prompt(Ajuste Rápido de Estoque para:\n${produto.titulo}\n\nDigite a nova quantidade total:, (produto.estoque || 0).toString());
@@ -130,6 +120,11 @@ if (novo !== null && novo.trim() !== '') {
 }
 
 
+};
+
+const lidarExcluir = async (id: string) => {
+const userId = auth.currentUser?.uid as string;
+if (userId && window.confirm("Excluir produto definitivamente?")) await deleteDoc(doc(db, 'usuarios', userId, 'produtos', id));
 };
 
 const lidarSalvarProduto = async (e: React.FormEvent) => {
@@ -186,7 +181,10 @@ Cadastre insumos, defina a embalagem e a meta para alimentar o algoritmo de inte
           <input type="text" required placeholder="Nome / Título do Produto" value={titulo} onChange={e => setTitulo(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
           <div className="flex gap-4">
             <input type="text" placeholder="Código (Ex: REF-01)" value={codigo} onChange={e => setCodigo(e.target.value)} className="w-1/2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
-            <select value={categoriaSelecionada} onChange={e => setCategoriaSelecionada(e.target.value)} className="w-1/2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700"><option value="">Categoria...</option>{categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select>
+            <select value={categoriaSelecionada} onChange={e => setCategoriaSelecionada(e.target.value)} className="w-1/2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700">
+              <option value="">Categoria...</option>
+              {categorias.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
           </div>
           <input type="url" placeholder="URL da Imagem (Opcional)" value={foto} onChange={e => setFoto(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
         </div>
@@ -257,8 +255,15 @@ return (
 Estoque AtivoGerencie preços, estoque e ative o PDV Expresso.
 
 <input type="text" placeholder="🔍 Buscar Título ou Cód..." value={busca} onChange={e => setBusca(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold w-48 outline-none focus:ring-2 focus:ring-blue-500 transition-all" />
-<select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">Categorias{categorias.map(c => {c.nome})}
-<select value={ordem} onChange={e => setOrdem(e.target.value as any)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">Mais RecentesEstoque CríticoMaior Lucro Limpo
+<select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">
+Categorias
+{categorias.map(c => {c.nome})}
+
+<select value={ordem} onChange={e => setOrdem(e.target.value as any)} className="px-4 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">
+Mais Recentes
+Estoque Crítico
+Maior Lucro Limpo
+
 
 
 
@@ -294,15 +299,15 @@ Estoque AtivoGerencie preços, estoque e ative o PDV Expresso.
                     <p className="text-xs font-bold text-slate-400 mt-1 uppercase tracking-widest">{produto.codigo} • {produto.categoria || 'Sem Categoria'}</p>
                   </div>
                   <div className="flex gap-2">
-                    {/* EDIÇÃO RÁPIDA DE ESTOQUE (CLICAR NA ETIQUETA) */}
+                    {/* EDIÇÃO RÁPIDA DE ESTOQUE */}
                     <button onClick={() => ajustarEstoqueRapido(produto)} className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 border hover:scale-105 transition-transform ${semEstoque ? 'bg-rose-50 text-rose-600 border-rose-200' : estoqueCritico ? 'bg-amber-50 text-amber-600 border-amber-200' : 'bg-emerald-50 text-emerald-600 border-emerald-200'}`} title="Editar Estoque Rápido">
                       {produto.estoque} UN ✏️
                     </button>
                     
-                    {/* BOTÃO DE EDIÇÃO COMPLETA */}
+                    {/* EDIÇÃO COMPLETA */}
                     <button onClick={() => iniciarEdicao(produto)} className="w-7 h-7 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg flex items-center justify-center transition-colors shadow-sm" title="Editar Produto">✏️</button>
                     
-                    {/* BOTÃO DE EXCLUSÃO */}
+                    {/* EXCLUSÃO */}
                     <button onClick={() => lidarExcluir(produto.id)} className="w-7 h-7 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-lg flex items-center justify-center transition-colors shadow-sm" title="Excluir Produto">✕</button>
                   </div>
                 </div>
@@ -313,6 +318,7 @@ Estoque AtivoGerencie preços, estoque e ative o PDV Expresso.
                     <span className="text-sm font-black text-slate-800">R$ {produto.custoTotal.toFixed(2)}</span>
                   </div>
                   
+                  {/* SIMULADOR INLINE */}
                   <div className="flex items-center gap-1 bg-emerald-50 px-2.5 py-1.5 rounded-lg border border-emerald-200 focus-within:ring-2 focus-within:ring-emerald-400 transition-all shadow-sm">
                     <span className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Meta Limpa: R$</span>
                     <input 
@@ -335,6 +341,7 @@ Estoque AtivoGerencie preços, estoque e ative o PDV Expresso.
                       return (
                         <div key={plat.id} className="bg-white border border-slate-200 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center min-w-[110px]">
                           <div className="flex items-center gap-1.5 mb-1 text-slate-500">
+                            {/* RESOLVIDO: O erro da logo que exibia URL virou a imagem real */}
                             {plat.logo.startsWith('http') ? (
                               <img src={plat.logo} alt={plat.nome} className="w-4 h-4 object-contain rounded-sm" />
                             ) : (
@@ -385,7 +392,7 @@ Estoque AtivoGerencie preços, estoque e ative o PDV Expresso.
           </div>
 
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido (Cliente pagou)</label>
             <div className="relative">
               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">R$</span>
               <input type="number" step="0.01" required placeholder="0.00" value={pdvValorFinal} onChange={e => setPdvValorFinal(e.target.value)} className="w-full pl-14 pr-4 py-5 bg-emerald-50 border border-emerald-200 focus:border-emerald-500 rounded-xl font-black text-3xl text-emerald-600 outline-none transition-all placeholder:text-emerald-300 shadow-inner" />
