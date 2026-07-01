@@ -73,8 +73,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     try {
       const codigoGerado = `ORD-${Date.now()}`;
       
-      // 1. Cria a Ordem de Compra
-      const compraRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), {
+      // APENAS GERA A ORDEM (A dívida só vai pro caixa quando a mercadoria chegar!)
+      await addDoc(collection(db, 'usuarios', userId, 'compras'), {
         codigoOrdem: codigoGerado,
         statusChegada: 'aguardando',
         fornecedorId: forn.id,
@@ -84,25 +84,12 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         numeroVale: numeroVale,
         itens: itensCarrinho,
         valorTotal: valorTotalOrdem,
-        statusPagamento: 'pendente'
+        statusPagamento: 'pendente',
+        faturaGerada: false // Flag de controle financeiro
       });
 
-      // 2. Injeta automaticamente a fatura no Fluxo de Caixa Mestre
-      await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
-        tipo: 'despesa',
-        descricao: `Fatura ${numeroVale ? `(Vale: ${numeroVale})` : codigoGerado} - ${forn.nome}`,
-        valor: valorTotalOrdem,
-        dataVencimento: dataVencimento || dataEmissao,
-        dataLancamento: dataEmissao,
-        status: 'pendente',
-        categoria: 'Compras de Estoque',
-        fornecedorId: forn.id,
-        compraId: compraRef.id
-      });
-
-      alert(`✅ Ordem ${codigoGerado} gerada com sucesso e fatura lançada no financeiro!`);
+      alert(`✅ Ordem ${codigoGerado} gerada e enviada para aguardo!`);
       
-      // Limpar form
       setItensCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
       setDataEmissao(new Date().toISOString().split('T')[0]);
       setDataVencimento(new Date().toISOString().split('T')[0]);
@@ -115,25 +102,30 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     setProcessandoOrdem(false);
   };
 
-  // LÓGICA: RECEBER MERCADORIA E ATUALIZAR ESTOQUE
+  // LÓGICA DE AUDITORIA: IDENTIFICAR VALES ANTIGOS SEM FATURA
+  const comprasSemFatura = useMemo(() => {
+    return compras.filter(c => c.statusChegada === 'recebido' && c.faturaGerada !== true);
+  }, [compras]);
+
   const comprasAguardando = useMemo(() => {
     return compras.filter(c => c.statusChegada === 'aguardando').sort((a, b) => new Date(b.dataCompra).getTime() - new Date(a.dataCompra).getTime());
   }, [compras]);
 
+  // LÓGICA: RECEBER MERCADORIA E ATUALIZAR CAIXA + ESTOQUE
   const registrarRecebimento = async (compra: Compra) => {
     const userId = auth.currentUser?.uid; if (!userId) return;
     
-    if (!window.confirm(`Confirmar entrada no estoque da ordem ${compra.codigoOrdem}?`)) return;
+    if (!window.confirm(`Confirmar entrada no estoque E lançar R$ ${compra.valorTotal.toFixed(2)} no Contas a Pagar?`)) return;
 
     setProcessandoRecebimento(true);
     try {
       const batch = writeBatch(db);
       
-      // 1. Muda o status da ordem para recebido
+      // 1. Muda o status da ordem e marca que a fatura foi gerada
       const compraRef = doc(db, 'usuarios', userId, 'compras', compra.id);
-      batch.update(compraRef, { statusChegada: 'recebido' });
+      batch.update(compraRef, { statusChegada: 'recebido', faturaGerada: true });
 
-      // 2. Soma as quantidades no estoque real dos produtos
+      // 2. Soma as quantidades no estoque real
       for (const item of compra.itens) {
         const prodExistente = produtos.find(p => p.id === item.produtoId);
         if (prodExistente) {
@@ -143,12 +135,63 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         }
       }
 
+      // 3. INJETA A DÍVIDA NO FLUXO DE CAIXA MESTRE
+      const faturaRef = doc(collection(db, 'usuarios', userId, 'lancamentos'));
+      batch.set(faturaRef, {
+        tipo: 'despesa',
+        descricao: `Fatura ${compra.numeroVale ? `(Vale: ${compra.numeroVale})` : compra.codigoOrdem} - ${compra.fornecedorNome}`,
+        valor: compra.valorTotal,
+        dataVencimento: compra.dataPagamento || compra.dataCompra || new Date().toISOString().split('T')[0],
+        dataLancamento: compra.dataCompra || new Date().toISOString().split('T')[0],
+        status: 'pendente',
+        categoria: 'Compras de Estoque',
+        fornecedorId: compra.fornecedorId,
+        compraId: compra.id
+      });
+
       await batch.commit();
-      alert(`📦 Sucesso! Estoque atualizado com os itens da ${compra.codigoOrdem}.`);
+      alert(`📦 Sucesso! Estoque atualizado e fatura enviada para o Contas a Pagar.`);
       setCodigoBip('');
     } catch (e) {
       console.error(e);
       alert("Erro ao processar recebimento.");
+    }
+    setProcessandoRecebimento(false);
+  };
+
+  const corrigirFaturasAntigas = async () => {
+    const userId = auth.currentUser?.uid; if (!userId) return;
+    if (!window.confirm(`Isso vai gerar ${comprasSemFatura.length} faturas no seu Contas a Pagar baseadas nos vales antigos. Deseja prosseguir?`)) return;
+
+    setProcessandoRecebimento(true);
+    try {
+      const batch = writeBatch(db);
+      
+      comprasSemFatura.forEach(compra => {
+        // Marca como gerada
+        const compraRef = doc(db, 'usuarios', userId, 'compras', compra.id);
+        batch.update(compraRef, { faturaGerada: true });
+
+        // Cria o lançamento financeiro retroativo
+        const faturaRef = doc(collection(db, 'usuarios', userId, 'lancamentos'));
+        batch.set(faturaRef, {
+          tipo: 'despesa',
+          descricao: `Fatura ${compra.numeroVale ? `(Vale: ${compra.numeroVale})` : compra.codigoOrdem} - ${compra.fornecedorNome}`,
+          valor: compra.valorTotal,
+          dataVencimento: compra.dataPagamento || compra.dataCompra || new Date().toISOString().split('T')[0],
+          dataLancamento: compra.dataCompra || new Date().toISOString().split('T')[0],
+          status: 'pendente',
+          categoria: 'Compras de Estoque',
+          fornecedorId: compra.fornecedorId,
+          compraId: compra.id
+        });
+      });
+
+      await batch.commit();
+      alert("✅ Sincronização concluída! Todas as ordens antigas agora estão no seu Fluxo de Caixa.");
+    } catch(e) {
+      console.error(e);
+      alert("Erro ao sincronizar faturas antigas.");
     }
     setProcessandoRecebimento(false);
   };
@@ -164,7 +207,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     }
   };
 
-  // LÓGICA: FORNECEDORES CRUD
   const salvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nomeForn) return;
@@ -315,6 +357,21 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       {abaAtiva === 'receber' && (
         <div className="animate-fade-in space-y-10">
           
+          {/* O ROBÔ AUDITOR: CORRIGIR FATURAS ÓRFÃS */}
+          {comprasSemFatura.length > 0 && (
+            <div className="bg-rose-950 border border-rose-500/50 p-6 rounded-3xl mb-8 flex flex-col md:flex-row items-center justify-between gap-6 shadow-[0_0_30px_rgba(225,29,72,0.2)] animate-pulse">
+              <div>
+                <h3 className="text-rose-400 font-black text-lg flex items-center gap-2"><span>🚨</span> Alerta de Auditoria Financeira</h3>
+                <p className="text-rose-200/70 font-medium text-sm mt-1">
+                  Detectamos <strong>{comprasSemFatura.length} Vales</strong> antigos que já deram entrada no estoque, mas não foram lançados no Contas a Pagar do Fluxo de Caixa.
+                </p>
+              </div>
+              <button onClick={corrigirFaturasAntigas} disabled={processandoRecebimento} className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-widest rounded-xl text-xs whitespace-nowrap shadow-lg shadow-rose-600/30 transition-all disabled:opacity-50">
+                {processandoRecebimento ? 'Sincronizando...' : 'Corrigir e Lançar no Caixa'}
+              </button>
+            </div>
+          )}
+
           {/* O LEITOR DE SCANNER HACKER */}
           <div className="bg-[#064e3b] rounded-[2.5rem] p-10 text-center shadow-xl border border-emerald-900/50 relative overflow-hidden max-w-4xl mx-auto">
             <div className="absolute top-0 right-1/2 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
@@ -361,7 +418,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
 
                     <h3 className="text-lg font-black text-slate-800 mb-5">{compra.fornecedorNome}</h3>
                     
-                    {/* AQUI ESTÁ A LISTA DE DATAS E VALE (FORMATO TERMINAL) */}
                     <div className="space-y-3 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-1">
                       <div className="flex justify-between items-center text-xs">
                         <span className="font-black text-slate-400 uppercase tracking-widest text-[9px] bg-slate-200 px-1.5 py-0.5 rounded">EMIT</span>
