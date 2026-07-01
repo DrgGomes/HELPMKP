@@ -78,7 +78,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     if (!file) return;
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada.");
+    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada no Vercel.");
 
     setProcessandoIA(true);
 
@@ -112,9 +112,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       const catExiste = categoriasDespesa.find(c => c.nome.toLowerCase() === dadosExtraidos.categoria?.toLowerCase());
       setCategoria(catExiste ? catExiste.nome : (dadosExtraidos.categoria || 'Outros'));
       
-      alert("✅ Leitura concluída com sucesso! Confirme os dados e salve.");
+      alert("✅ Uplink Concluído. Dados injetados no sistema. Confirme.");
     } catch (error: any) {
-      alert(`❌ Erro na leitura do comprovante:\n\n${error.message}`);
+      alert(`❌ Erro no Uplink:\n\n${error.message}`);
     } finally {
       setProcessandoIA(false); event.target.value = '';
     }
@@ -433,7 +433,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               {modoSelecao && (
                 <div className="bg-blue-900/20 border-b border-blue-500/30 p-4 flex flex-wrap gap-4 items-center justify-between relative z-10 animate-fade-in">
                   <div className="flex items-center gap-3">
-                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">Selecionar Todos</button>
+                    <button onClick={selecionarTodos} className="text-[10px] font-black uppercase font-mono bg-blue-950 border border-blue-500 text-blue-400 hover:bg-blue-900 hover:text-white px-3 py-2 rounded transition-colors">&gt;&gt; Selecionar Todos</button>
                     <span className="text-xs font-mono text-blue-300 font-bold">[{selecionados.length} itens selecionados]</span>
                   </div>
                   <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -525,13 +525,30 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 <div className="p-4 bg-slate-50"><div className="space-y-3">
                   {forn.faturas.map(fat => {
                     const compData = compras.find(c => c.id === fat.compraId);
+                    const isAtrasado = fat.status === 'pendente' && fat.dataVencimento < new Date().toISOString().split('T')[0];
                     return (
-                      <div key={fat.id} className="p-4 bg-white border border-slate-200 shadow-sm rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4">
-                        <div className="w-full md:w-auto"><p className="font-bold text-slate-800 text-sm">{fat.descricao}</p><p className="text-xs text-slate-500 mt-1 font-mono">Vence: {fat.dataVencimento.split('-').reverse().join('/')}</p></div>
+                      <div key={fat.id} className="p-4 bg-white border border-slate-200 shadow-sm rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 hover:border-blue-300 transition-colors">
+                        <div className="w-full md:w-auto">
+                          <p className="font-bold text-slate-800 text-sm mb-2">{fat.descricao}</p>
+                          <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono font-black uppercase tracking-widest">
+                            <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md border border-slate-200">
+                              Emit: {fat.dataLancamento ? fat.dataLancamento.split('-').reverse().join('/') : '---'}
+                            </span>
+                            <span className={`px-2.5 py-1 rounded-md border ${isAtrasado ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+                              Venc: {fat.dataVencimento.split('-').reverse().join('/')}
+                            </span>
+                          </div>
+                        </div>
                         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-end">
-                          <span className="font-black text-rose-600 text-lg font-mono">R$ {fat.valor.toFixed(2)}</span>
-                          <div className="flex gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200"><button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+7 Dias</button><button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+15 Dias</button></div>
-                          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm"><button onClick={() => iniciarEdicao(fat)} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm">✏️</button><button onClick={() => excluirLancamento(fat)} className="px-4 py-2.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 text-sm border-l border-slate-200 transition-colors">✕</button></div>
+                          <span className={`font-black text-lg font-mono ${isAtrasado ? 'text-rose-600' : 'text-slate-700'}`}>R$ {fat.valor.toFixed(2)}</span>
+                          <div className="flex gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+                            <button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+7 Dias</button>
+                            <button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+15 Dias</button>
+                          </div>
+                          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                            <button onClick={() => iniciarEdicao(fat)} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm">✏️</button>
+                            <button onClick={() => excluirLancamento(fat)} className="px-4 py-2.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 text-sm border-l border-slate-200 transition-colors">✕</button>
+                          </div>
                           {compData && <button onClick={() => setCompraModal(compData)} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md">📄 Ver Vale</button>}
                           <button onClick={() => alternarStatus(fat)} className="px-5 py-2.5 bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-700 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors">Pagar</button>
                         </div>
