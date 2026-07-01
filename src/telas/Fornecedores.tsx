@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
-import { doc, setDoc, addDoc, collection, deleteDoc, updateDoc } from 'firebase/firestore';
+import React, { useState, useMemo } from 'react';
+import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import type { Fornecedor, Produto, ItemCompra, Compra } from '../types';
+import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
 
 interface FornecedoresProps {
   fornecedores: Fornecedor[];
@@ -10,380 +10,430 @@ interface FornecedoresProps {
 }
 
 export default function Fornecedores({ fornecedores, produtos, compras }: FornecedoresProps) {
-  const [abaAtiva, setAbaAtiva] = useState<'nova_ordem' | 'receber_bipe' | 'lista'>('nova_ordem');
-  
-  // Estados Fornecedores
-  const [idFornEdicao, setIdFornEdicao] = useState<string | null>(null);
+  const [abaAtiva, setAbaAtiva] = useState<'gerar' | 'receber' | 'lista'>('receber');
+
+  // --- ESTADOS PARA ABA: GERAR ORDEM ---
+  const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
+  const [dataEmissao, setDataEmissao] = useState(new Date().toISOString().split('T')[0]);
+  const [dataVencimento, setDataVencimento] = useState(new Date().toISOString().split('T')[0]);
+  const [numeroVale, setNumeroVale] = useState('');
+  const [itensCarrinho, setItensCarrinho] = useState<ItemCompra[]>([]);
+  const [produtoSelecionado, setProdutoSelecionado] = useState('');
+  const [quantidadeDesejada, setQuantidadeDesejada] = useState(1);
+  const [custoUnitario, setCustoUnitario] = useState('');
+  const [processandoOrdem, setProcessandoOrdem] = useState(false);
+
+  // --- ESTADOS PARA ABA: RECEBER ---
+  const [codigoBip, setCodigoBip] = useState('');
+  const [processandoRecebimento, setProcessandoRecebimento] = useState(false);
+
+  // --- ESTADOS PARA ABA: LISTA FORNECEDORES ---
+  const [idFornecedorEdicao, setIdFornecedorEdicao] = useState<string | null>(null);
   const [nomeForn, setNomeForn] = useState('');
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
-  // Estados Ordem de Compra
-  const [idOrdemEdicao, setIdOrdemEdicao] = useState<string | null>(null); // NOVO: Para saber se está editando
-  const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
-  const [carrinho, setCarrinho] = useState<ItemCompra[]>([]);
-  const [produtoSelecionado, setProdutoSelecionado] = useState('');
-  const [numeroVale, setNumeroVale] = useState('');
-  const [dataCompra, setDataCompra] = useState(new Date().toISOString().split('T')[0]);
-  const [dataPagamento, setDataPagamento] = useState(new Date().toISOString().split('T')[0]);
-  const [ordemImpressao, setOrdemImpressao] = useState<Compra | null>(null);
-
-  // Estados Recebimento
-  const [codigoBipe, setCodigoBipe] = useState('');
-  const [ordemEmConferencia, setOrdemEmConferencia] = useState<Compra | null>(null);
-  const [itensConferidos, setItensConferidos] = useState<Record<string, boolean>>({});
-
-  const comprasPendentesDeRecebimento = compras.filter(c => c.statusChegada === 'aguardando');
-
-  const lidarSalvarFornecedor = async (e: React.FormEvent) => {
-    e.preventDefault(); if (!nomeForn) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    const dados = { nome: nomeForn, contato: contatoForn, categoriaInsumo: categoriaForn };
-    if (idFornEdicao) await setDoc(doc(db, 'usuarios', userId, 'fornecedores', idFornEdicao), dados);
-    else await addDoc(collection(db, 'usuarios', userId, 'fornecedores'), dados);
-    setIdFornEdicao(null); setNomeForn(''); setContatoForn(''); setCategoriaForn('');
-  };
-  
-  const lidarExcluirFornecedor = async (id: string) => { 
-    const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'fornecedores', id)); 
-  };
-
+  // LÓGICA: GERAR ORDEM DE COMPRA
   const adicionarAoCarrinho = () => {
-    if (!produtoSelecionado) return;
-    const prodRef = produtos.find(p => p.id === produtoSelecionado);
-    if (!prodRef || carrinho.some(item => item.produtoId === prodRef.id)) return;
-    setCarrinho([...carrinho, { produtoId: prodRef.id, nome: prodRef.titulo, quantidade: 1, custoUnitario: prodRef.custoBase, subtotal: prodRef.custoBase }]);
-    setProdutoSelecionado('');
-  };
-  
-  const atualizarItemCarrinho = (id: string, campo: 'quantidade' | 'custoUnitario', valor: number) => {
-    setCarrinho(carrinho.map(item => { if (item.produtoId === id) { const novoItem = { ...item, [campo]: valor }; novoItem.subtotal = novoItem.quantidade * novoItem.custoUnitario; return novoItem; } return item; }));
-  };
-  
-  const removerDoCarrinho = (id: string) => setCarrinho(carrinho.filter(item => item.produtoId !== id));
-  const totalCompra = carrinho.reduce((acc, item) => acc + item.subtotal, 0);
+    if (!produtoSelecionado || quantidadeDesejada <= 0 || !custoUnitario) return;
+    const prod = produtos.find(p => p.id === produtoSelecionado);
+    if (!prod) return;
 
-  const gerarOrdemDeCompra = async () => {
-    if (!fornecedorSelecionado || carrinho.length === 0) return alert("Preencha os dados!");
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
-    
-    // Se estiver editando, mantém o código antigo. Se não, gera novo.
-    const codigoUnico = idOrdemEdicao ? (compras.find(c => c.id === idOrdemEdicao)?.codigoOrdem || 'ORD') : 'ORD-' + Math.floor(Date.now() / 1000);
-
-    const novaOrdem: Omit<Compra, 'id'> = {
-      codigoOrdem: codigoUnico, statusChegada: 'aguardando', fornecedorId: fornecedorSelecionado,
-      fornecedorNome: forn?.nome || 'Desconhecido', dataCompra: dataCompra,
-      dataPagamento: dataPagamento, numeroVale: numeroVale, itens: carrinho,
-      valorTotal: totalCompra, statusPagamento: 'pendente'
+    const custo = parseFloat(custoUnitario);
+    const novoItem: ItemCompra = {
+      produtoId: prod.id,
+      nome: prod.titulo,
+      quantidade: quantidadeDesejada,
+      custoUnitario: custo,
+      subtotal: quantidadeDesejada * custo
     };
 
+    setItensCarrinho([...itensCarrinho, novoItem]);
+    setProdutoSelecionado('');
+    setQuantidadeDesejada(1);
+    setCustoUnitario('');
+  };
+
+  const removerDoCarrinho = (index: number) => {
+    const novos = [...itensCarrinho];
+    novos.splice(index, 1);
+    setItensCarrinho(novos);
+  };
+
+  const valorTotalOrdem = itensCarrinho.reduce((acc, item) => acc + item.subtotal, 0);
+
+  const finalizarOrdem = async () => {
+    if (!fornecedorSelecionado || itensCarrinho.length === 0) return alert("Selecione um fornecedor e adicione itens.");
+    const userId = auth.currentUser?.uid; if (!userId) return;
+
+    const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
+    if (!forn) return;
+
+    setProcessandoOrdem(true);
     try {
-      if (idOrdemEdicao) {
-        await updateDoc(doc(db, 'usuarios', userId, 'compras', idOrdemEdicao), novaOrdem);
-        setOrdemImpressao({ id: idOrdemEdicao, ...novaOrdem });
-        alert(`Ordem ${codigoUnico} atualizada com sucesso!`);
-      } else {
-        const docRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), novaOrdem);
-        setOrdemImpressao({ id: docRef.id, ...novaOrdem });
-        alert(`Ordem ${codigoUnico} gerada com sucesso!`);
+      const codigoGerado = `ORD-${Date.now()}`;
+      
+      // 1. Cria a Ordem de Compra
+      const compraRef = await addDoc(collection(db, 'usuarios', userId, 'compras'), {
+        codigoOrdem: codigoGerado,
+        statusChegada: 'aguardando',
+        fornecedorId: forn.id,
+        fornecedorNome: forn.nome,
+        dataCompra: dataEmissao,
+        dataPagamento: dataVencimento,
+        numeroVale: numeroVale,
+        itens: itensCarrinho,
+        valorTotal: valorTotalOrdem,
+        statusPagamento: 'pendente'
+      });
+
+      // 2. Injeta automaticamente a fatura no Fluxo de Caixa Mestre
+      await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
+        tipo: 'despesa',
+        descricao: `Fatura ${numeroVale ? `(Vale: ${numeroVale})` : codigoGerado} - ${forn.nome}`,
+        valor: valorTotalOrdem,
+        dataVencimento: dataVencimento || dataEmissao,
+        dataLancamento: dataEmissao,
+        status: 'pendente',
+        categoria: 'Compras de Estoque',
+        fornecedorId: forn.id,
+        compraId: compraRef.id
+      });
+
+      alert(`✅ Ordem ${codigoGerado} gerada com sucesso e fatura lançada no financeiro!`);
+      
+      // Limpar form
+      setItensCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
+      setDataEmissao(new Date().toISOString().split('T')[0]);
+      setDataVencimento(new Date().toISOString().split('T')[0]);
+      setAbaAtiva('receber');
+
+    } catch (e) {
+      console.error(e);
+      alert("Falha ao gerar ordem.");
+    }
+    setProcessandoOrdem(false);
+  };
+
+  // LÓGICA: RECEBER MERCADORIA E ATUALIZAR ESTOQUE
+  const comprasAguardando = useMemo(() => {
+    return compras.filter(c => c.statusChegada === 'aguardando').sort((a, b) => new Date(b.dataCompra).getTime() - new Date(a.dataCompra).getTime());
+  }, [compras]);
+
+  const registrarRecebimento = async (compra: Compra) => {
+    const userId = auth.currentUser?.uid; if (!userId) return;
+    
+    if (!window.confirm(`Confirmar entrada no estoque da ordem ${compra.codigoOrdem}?`)) return;
+
+    setProcessandoRecebimento(true);
+    try {
+      const batch = writeBatch(db);
+      
+      // 1. Muda o status da ordem para recebido
+      const compraRef = doc(db, 'usuarios', userId, 'compras', compra.id);
+      batch.update(compraRef, { statusChegada: 'recebido' });
+
+      // 2. Soma as quantidades no estoque real dos produtos
+      for (const item of compra.itens) {
+        const prodExistente = produtos.find(p => p.id === item.produtoId);
+        if (prodExistente) {
+          const prodRef = doc(db, 'usuarios', userId, 'produtos', prodExistente.id);
+          const novoEstoque = (prodExistente.estoque || 0) + item.quantidade;
+          batch.update(prodRef, { estoque: novoEstoque });
+        }
       }
-      setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale(''); setIdOrdemEdicao(null);
-      setDataCompra(new Date().toISOString().split('T')[0]); 
-    } catch (error) { console.error(error); }
+
+      await batch.commit();
+      alert(`📦 Sucesso! Estoque atualizado com os itens da ${compra.codigoOrdem}.`);
+      setCodigoBip('');
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao processar recebimento.");
+    }
+    setProcessandoRecebimento(false);
   };
 
-  const cancelarEdicaoOrdem = () => {
-    setIdOrdemEdicao(null); setCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
-    setDataCompra(new Date().toISOString().split('T')[0]); setDataPagamento(new Date().toISOString().split('T')[0]);
-  };
-
-  // --- NOVO: EDITAR E EXCLUIR ORDEM PENDENTE ---
-  const editarOrdemPendente = (ordem: Compra) => {
-    setAbaAtiva('nova_ordem');
-    setIdOrdemEdicao(ordem.id);
-    setFornecedorSelecionado(ordem.fornecedorId);
-    setCarrinho(ordem.itens);
-    setDataCompra(ordem.dataCompra.split('T')[0]);
-    setDataPagamento(ordem.dataPagamento || new Date().toISOString().split('T')[0]);
-    setNumeroVale(ordem.numeroVale || '');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  const excluirOrdemPendente = async (id: string) => {
-    const userId = auth.currentUser?.uid as string;
-    if (userId && window.confirm("Excluir esta ordem pendente permanentemente?")) {
-      await deleteDoc(doc(db, 'usuarios', userId, 'compras', id));
+  const lidarBip = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      const ordemEncontrada = comprasAguardando.find(c => c.codigoOrdem === codigoBip.trim());
+      if (ordemEncontrada) {
+        registrarRecebimento(ordemEncontrada);
+      } else {
+        alert("Ordem não encontrada ou já recebida.");
+      }
     }
   };
 
-  const lidarBipeEntrada = (e: React.FormEvent) => {
+  // LÓGICA: FORNECEDORES CRUD
+  const salvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
-    const ordem = compras.find(c => c.codigoOrdem === codigoBipe.trim() || c.id === codigoBipe.trim());
-    if (!ordem) { alert("Ordem não encontrada!"); setCodigoBipe(''); return; }
-    if (ordem.statusChegada === 'recebido') { alert("Esta ordem já foi recebida!"); setCodigoBipe(''); return; }
-    
-    setOrdemEmConferencia(ordem); setItensConferidos({}); setCodigoBipe('');
-  };
+    if (!nomeForn) return;
+    const userId = auth.currentUser?.uid; if (!userId) return;
 
-  const iniciarConferenciaManual = (ordem: Compra) => {
-    setOrdemEmConferencia(ordem);
-    setItensConferidos({});
-  };
-
-  const confirmarEntradaNoSistema = async () => {
-    if (!ordemEmConferencia) return;
-    const todosConferidos = ordemEmConferencia.itens.every(item => itensConferidos[item.produtoId]);
-    if (!todosConferidos) return alert("Você precisa conferir todos os itens!");
-
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-
-    try {
-      for (const item of ordemEmConferencia.itens) {
-        const prodAtual = produtos.find(p => p.id === item.produtoId);
-        if (prodAtual) await updateDoc(doc(db, 'usuarios', userId, 'produtos', item.produtoId), { estoque: (prodAtual.estoque || 0) + item.quantidade });
-      }
-
-      await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
-        tipo: 'despesa',
-        descricao: `Fatura ${ordemEmConferencia.codigoOrdem} (${ordemEmConferencia.fornecedorNome})`,
-        valor: ordemEmConferencia.valorTotal,
-        dataVencimento: ordemEmConferencia.dataPagamento || new Date().toISOString().split('T')[0],
-        dataLancamento: ordemEmConferencia.dataCompra.split('T')[0],
-        status: 'pendente', categoria: 'Fornecedores',
-        fornecedorId: ordemEmConferencia.fornecedorId, compraId: ordemEmConferencia.id
-      });
-
-      await updateDoc(doc(db, 'usuarios', userId, 'compras', ordemEmConferencia.id), { statusChegada: 'recebido' });
-      alert("SUCESSO! Estoque atualizado e fatura lançada no Caixa.");
-      setOrdemEmConferencia(null);
-    } catch (error) { console.error(error); }
+    const dados = { nome: nomeForn, contato: contatoForn, categoriaInsumo: categoriaForn };
+    if (idFornecedorEdicao) {
+      await updateDoc(doc(db, 'usuarios', userId, 'fornecedores', idFornecedorEdicao), dados);
+    } else {
+      await addDoc(collection(db, 'usuarios', userId, 'fornecedores'), dados);
+    }
+    setIdFornecedorEdicao(null); setNomeForn(''); setContatoForn(''); setCategoriaForn('');
   };
 
   return (
-    <div className="animate-fade-in max-w-7xl mx-auto space-y-6">
-      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #pdf-ordem, #pdf-ordem * { visibility: visible; } #pdf-ordem { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; } .no-print { display: none !important; } }`}} />
-
-      <header className="mb-4 no-print">
-        <h2 className="text-3xl font-black text-slate-800 flex items-center gap-2"><span>🚚</span> Compras & Entradas</h2>
-        <p className="text-slate-500 mt-1">Crie Ordens de Compra e dê entrada no estoque bipando o código ou clicando nos pendentes.</p>
+    <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
+      
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+        <div>
+          <h2 className="text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+            <span>🚚</span> Compras & Entradas
+          </h2>
+          <p className="text-slate-500 font-medium mt-1">Gere ordens de compra e dê entrada no estoque bipando o código ou clicando nos pendentes.</p>
+        </div>
       </header>
 
-      <div className="flex gap-2 border-b border-slate-200 pb-px no-print">
-        <button onClick={() => setAbaAtiva('nova_ordem')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'nova_ordem' ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>🛒 1. {idOrdemEdicao ? 'Editar Ordem' : 'Gerar Ordem'}</button>
-        <button onClick={() => setAbaAtiva('receber_bipe')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all flex items-center gap-2 ${abaAtiva === 'receber_bipe' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}><span>⚡</span> 2. Receber Mercadoria</button>
-        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-3 font-bold text-sm rounded-t-xl transition-all ${abaAtiva === 'lista' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>📋 Fornecedores</button>
+      {/* ABAS MODERNAS */}
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px">
+        <button onClick={() => setAbaAtiva('gerar')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'gerar' ? 'bg-slate-900 text-white border-t-2 border-slate-900 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>🛒</span> 1. Gerar Ordem
+        </button>
+        <button onClick={() => setAbaAtiva('receber')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'receber' ? 'bg-emerald-600 text-white border-t-2 border-emerald-500 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>⚡</span> 2. Receber Mercadoria
+        </button>
+        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'lista' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>📋</span> Fornecedores
+        </button>
       </div>
 
-      {abaAtiva === 'nova_ordem' && (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start w-full no-print">
-            <div className="lg:col-span-7 xl:col-span-8 space-y-6 min-w-0">
-              <div className={`bg-white p-5 md:p-8 rounded-2xl shadow-sm border ${idOrdemEdicao ? 'border-amber-400 ring-2 ring-amber-100' : 'border-slate-200'}`}>
-                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">{idOrdemEdicao ? '✏️ Editando Pedido Existente' : 'Montar Pedido'}</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                  <div className="min-w-0">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Para qual Fornecedor?</label>
-                    <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value="">Selecione...</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select>
-                  </div>
-                  <div className="min-w-0">
-                    <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Adicionar Produtos</label>
-                    <div className="flex gap-2"><select value={produtoSelecionado} onChange={(e) => setProdutoSelecionado(e.target.value)} className="flex-1 min-w-0 px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none truncate"><option value="">Buscar no estoque...</option>{produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}</select><button onClick={adicionarAoCarrinho} className="shrink-0 px-6 bg-blue-600 hover:bg-blue-700 text-white font-black rounded-xl text-xl shadow-md">+</button></div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200 min-h-[250px]">
-                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Itens e Quantidades</h3>
-                {carrinho.length === 0 ? <div className="flex flex-col items-center justify-center h-32 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50"><p className="font-medium text-sm">Carrinho Vazio.</p></div> : (
-                  <div className="space-y-4">
-                    {carrinho.map(item => (
-                      <div key={item.produtoId} className="flex flex-col xl:flex-row xl:items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 shadow-sm relative pr-10">
-                        <div className="flex-1 min-w-0"><p className="font-bold text-slate-800 truncate">{item.nome}</p></div>
-                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-3 w-full xl:w-auto">
-                          <div className="flex flex-col w-20 shrink-0"><span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Qtd</span><input type="number" min="1" value={item.quantidade} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'quantidade', parseInt(e.target.value) || 0)} className="w-full px-2 py-2 border rounded-xl text-center font-black" /></div>
-                          <div className="flex flex-col w-28 shrink-0"><span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Custo Un</span><input type="number" step="0.01" value={item.custoUnitario} onChange={(e) => atualizarItemCarrinho(item.produtoId, 'custoUnitario', parseFloat(e.target.value) || 0)} className="w-full px-2 py-2 border rounded-xl text-center font-bold" /></div>
-                          <div className="flex flex-col text-right min-w-[90px] ml-auto"><span className="text-[10px] font-bold text-slate-400 uppercase mb-1">Subtotal</span><span className="font-black text-slate-800 text-lg">R$ {item.subtotal.toFixed(2)}</span></div>
-                        </div>
-                        <button onClick={() => removerDoCarrinho(item.produtoId)} className="absolute right-2 top-4 xl:top-1/2 xl:-translate-y-1/2 w-8 h-8 flex items-center justify-center bg-rose-100 text-rose-600 rounded-lg font-bold">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-white p-5 md:p-8 rounded-2xl shadow-sm border border-slate-200">
-                <h3 className="text-lg font-black text-slate-800 mb-5 border-b border-slate-100 pb-3">Datas e Pagamento</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Data da Compra</label><input type="date" required value={dataCompra} onChange={(e) => setDataCompra(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
-                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Previsão Vale/NF</label><input type="text" placeholder="Ex: NF 9081" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
-                  <div className="min-w-0"><label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Vencimento a Pagar</label><input type="date" required value={dataPagamento} onChange={(e) => setDataPagamento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold" /></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:col-span-5 xl:col-span-4 bg-slate-900 p-6 rounded-2xl shadow-xl h-fit lg:sticky lg:top-6 text-white border border-slate-800 w-full min-w-0">
-              <h3 className="text-xl font-black mb-6 border-b border-slate-700 pb-4">Ação</h3>
-              <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 mb-6 text-center"><p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Total da Ordem</p><p className="text-4xl font-black text-blue-400 truncate">R$ {totalCompra.toFixed(2)}</p></div>
-              <button onClick={gerarOrdemDeCompra} disabled={carrinho.length === 0 || !fornecedorSelecionado} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-xl font-black text-lg shadow-lg disabled:opacity-50">{idOrdemEdicao ? 'Atualizar Pedido' : 'Emitir Ordem (PDF)'}</button>
-              {idOrdemEdicao && <button onClick={cancelarEdicaoOrdem} className="w-full mt-3 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition-colors">Cancelar Edição</button>}
-              {ordemImpressao && <button onClick={() => window.print()} className="mt-4 w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 py-3 rounded-xl font-black flex items-center justify-center gap-2 shadow-lg">🖨️ Imprimir {ordemImpressao.codigoOrdem}</button>}
-            </div>
-          </div>
-
-          {/* O PDF DA ORDEM DE COMPRA */}
-          {ordemImpressao && (
-            <div id="pdf-ordem" className="hidden print:block bg-white p-8 border border-slate-300">
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-6 mb-6">
-                <div><h1 className="text-3xl font-black text-slate-900 uppercase tracking-widest">Ordem de Compra</h1><p className="text-slate-500 font-bold mt-2">HelpMkp E-commerce</p></div>
-                <div className="text-right"><p className="text-2xl font-black text-slate-800">{ordemImpressao.codigoOrdem}</p><p className="text-sm font-bold text-slate-500">Emitido: {new Date().toLocaleDateString('pt-BR')}</p></div>
-              </div>
-              <div className="mb-8 grid grid-cols-2 gap-8 text-sm">
-                <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg"><p className="font-bold text-slate-400 uppercase mb-1">Fornecedor</p><p className="font-black text-lg">{ordemImpressao.fornecedorNome}</p></div>
-                <div className="bg-slate-50 p-4 border border-slate-200 rounded-lg text-right">
-                  <p className="font-bold text-slate-400 uppercase mb-1">Detalhes Fiscais</p>
-                  <p className="font-bold text-slate-600">Comprado em: {ordemImpressao.dataCompra.split('T')[0].split('-').reverse().join('/')}</p>
-                  <p className="font-bold text-slate-600">NF/Vale: {ordemImpressao.numeroVale || 'A definir'}</p>
-                  <p className="font-black text-lg text-rose-600 mt-1">Vencimento: {ordemImpressao.dataPagamento?.split('-').reverse().join('/')}</p>
-                </div>
-              </div>
-              <table className="w-full text-left text-sm border-collapse mb-12">
-                <thead><tr className="border-b border-slate-400 bg-slate-100 font-bold uppercase"><th className="p-3">Descrição do Item</th><th className="p-3 text-center">Quantidade</th><th className="p-3 text-right">Custo Un.</th><th className="p-3 text-right">Subtotal</th></tr></thead>
-                <tbody className="divide-y divide-slate-200">{ordemImpressao.itens.map(item => (<tr key={item.produtoId}><td className="p-3 font-bold text-slate-700">{item.nome}</td><td className="p-3 text-center font-black">{item.quantidade} un</td><td className="p-3 text-right">R$ {item.custoUnitario.toFixed(2)}</td><td className="p-3 text-right font-black">R$ {item.subtotal.toFixed(2)}</td></tr>))}</tbody>
-                <tfoot><tr className="border-t-2 border-slate-900"><td colSpan={3} className="p-3 text-right font-bold text-slate-500 uppercase">Valor Total do Pedido:</td><td className="p-3 text-right text-2xl font-black">R$ {ordemImpressao.valorTotal.toFixed(2)}</td></tr></tfoot>
-              </table>
-              <div className="border-t border-slate-300 pt-8 flex justify-between items-center">
-                <div className="w-2/3"><p className="text-xs text-slate-500 font-bold uppercase mb-2">Bipe para dar entrada no sistema (Código de Barras)</p><img src={`https://barcode.orcascan.com/?type=code128&data=${ordemImpressao.codigoOrdem}`} alt="Barcode" className="h-16" /></div>
-                <div className="w-1/3 text-right flex flex-col items-end"><p className="text-xs text-slate-500 font-bold uppercase mb-2">Ou QR Code</p><img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordemImpressao.codigoOrdem}`} alt="QR Code" className="w-24 h-24" /></div>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* --- ABA 2: RECEBER MERCADORIA --- */}
-      {abaAtiva === 'receber_bipe' && (
-        <div className="max-w-4xl mx-auto space-y-8 no-print animate-fade-in">
+      {/* ABA 1: GERAR ORDEM */}
+      {abaAtiva === 'gerar' && (
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in">
           
-          {!ordemEmConferencia ? (
-            <>
-              {/* O Painel do Bipe */}
-              <div className="bg-emerald-900 p-8 rounded-3xl shadow-lg border border-emerald-800 text-white text-center">
-                <span className="text-5xl block mb-4 animate-bounce">🎯</span>
-                <h3 className="text-2xl font-black mb-2">Bipe a Ordem de Compra</h3>
-                <p className="text-emerald-300/80 mb-6 text-sm">Com o caminhão na porta, passe o leitor na folha do pedido.</p>
-                <form onSubmit={lidarBipeEntrada} className="max-w-md mx-auto">
-                  <input type="text" placeholder="Ex: ORD-171829" value={codigoBipe} onChange={(e) => setCodigoBipe(e.target.value)} className="w-full text-center px-4 py-5 bg-emerald-950 border-2 border-emerald-700 rounded-2xl outline-none focus:border-emerald-400 font-mono font-black tracking-widest text-2xl text-emerald-400 placeholder:text-emerald-800 shadow-inner" autoFocus />
-                </form>
+          <div className="xl:col-span-5 bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
+            <h3 className="font-black text-xl text-slate-800 tracking-tight mb-6 border-b border-slate-100 pb-4">Nova Ordem de Compra</h3>
+            
+            <div className="space-y-5">
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Fornecedor / Fábrica</label>
+                <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
+                  <option value="">Selecionar Fábrica...</option>
+                  {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                </select>
               </div>
 
-              {/* A VITRINE DE ORDENS PENDENTES (COM EDITAR E EXCLUIR) */}
-              <div className="pt-6 border-t border-slate-200">
-                <h3 className="text-lg font-black text-slate-800 mb-4 flex items-center gap-2"><span>🚚</span> Ordens Aguardando Chegada</h3>
-                <p className="text-sm text-slate-500 mb-6">Ou se preferir, selecione abaixo os pedidos que ainda estão no caminhão para conferir a carga:</p>
-                
-                {comprasPendentesDeRecebimento.length === 0 ? (
-                  <div className="bg-white p-10 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 font-bold">Nenhum pedido aguardando recebimento no momento.</div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {comprasPendentesDeRecebimento.map(compra => (
-                      <div key={compra.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 hover:border-emerald-300 transition-colors group relative overflow-hidden">
-                        
-                        {/* BOTÕES DE EDITAR E EXCLUIR NO CARD */}
-                        <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick={() => editarOrdemPendente(compra)} className="p-1.5 bg-slate-100 text-slate-600 rounded hover:bg-slate-200" title="Editar Ordem">✏️</button>
-                          <button onClick={() => excluirOrdemPendente(compra.id)} className="p-1.5 bg-rose-50 text-rose-500 rounded hover:bg-rose-100" title="Excluir Ordem">🗑️</button>
-                        </div>
-
-                        <div className="flex justify-between items-start mb-4 pr-16">
-                          <div>
-                            <span className="px-2 py-1 bg-amber-100 text-amber-700 font-black text-[10px] rounded uppercase">No Caminhão</span>
-                            <h4 className="font-black text-lg text-slate-800 mt-2 truncate">{compra.fornecedorNome}</h4>
-                          </div>
-                        </div>
-                        <p className="text-xs font-mono font-bold text-slate-500 mb-4">{compra.codigoOrdem} • {compra.itens.length} itens <span className="float-right text-base text-slate-800">R$ {compra.valorTotal.toFixed(2)}</span></p>
-                        
-                        <button onClick={() => iniciarConferenciaManual(compra)} className="w-full py-3 bg-slate-100 hover:bg-emerald-50 text-emerald-700 border border-slate-200 hover:border-emerald-200 rounded-xl text-xs font-black uppercase tracking-wider transition-colors">
-                          📦 Iniciar Conferência
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 animate-fade-in">
-              <div className="flex justify-between items-end border-b border-slate-200 pb-5 mb-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <span className="px-3 py-1 bg-amber-100 text-amber-700 font-black text-[10px] rounded-lg uppercase tracking-widest">Conferindo Carga</span>
-                  <h3 className="text-2xl font-black text-slate-800 mt-2">{ordemEmConferencia.fornecedorNome}</h3>
-                  <p className="text-slate-500 font-mono font-bold">{ordemEmConferencia.codigoOrdem}</p>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data de Emissão</label>
+                  <input type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500" />
                 </div>
-                <div className="text-right">
-                  <p className="text-xs font-bold text-slate-400 uppercase">Fatura</p>
-                  <p className="text-2xl font-black text-rose-600">R$ {ordemEmConferencia.valorTotal.toFixed(2)}</p>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vencimento da Fatura</label>
+                  <input type="date" value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500" />
                 </div>
               </div>
 
-              <h4 className="font-bold text-slate-800 mb-4">Checklist Físico da Mercadoria:</h4>
-              <div className="space-y-3 mb-8">
-                {ordemEmConferencia.itens.map(item => (
-                  <label key={item.produtoId} className={`flex items-center gap-4 p-4 border rounded-xl cursor-pointer transition-colors ${itensConferidos[item.produtoId] ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}>
-                    <input 
-                      type="checkbox" 
-                      className="w-6 h-6 accent-emerald-500" 
-                      checked={itensConferidos[item.produtoId] || false}
-                      onChange={(e) => setItensConferidos({...itensConferidos, [item.produtoId]: e.target.checked})}
-                    />
-                    <div className="flex-1">
-                      <p className={`font-bold ${itensConferidos[item.produtoId] ? 'text-emerald-800' : 'text-slate-700'}`}>{item.nome}</p>
-                      <p className="text-xs text-slate-500 font-bold">Confirme se chegaram <span className="text-slate-800 bg-slate-200 px-1 rounded">{item.quantidade} unidades</span>.</p>
-                    </div>
-                  </label>
-                ))}
+              <div>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Número do Vale / NF (Opcional)</label>
+                <input type="text" placeholder="Ex: VALE-1234" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 font-mono text-slate-700" />
               </div>
 
-              <div className="flex gap-3">
-                <button onClick={() => setOrdemEmConferencia(null)} className="w-1/3 py-5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl font-black transition-colors">Cancelar</button>
-                <button 
-                  onClick={confirmarEntradaNoSistema}
-                  disabled={!ordemEmConferencia.itens.every(i => itensConferidos[i.produtoId])}
-                  className="w-2/3 py-5 bg-slate-900 hover:bg-slate-800 text-emerald-400 rounded-2xl font-black text-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-xl shadow-slate-900/20"
-                >
-                  📥 Confirmar Entrada Definitiva
+              <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 mt-6 space-y-4">
+                <h4 className="font-black text-indigo-900 text-sm">Adicionar Itens</h4>
+                <div>
+                  <select value={produtoSelecionado} onChange={(e) => {
+                    setProdutoSelecionado(e.target.value);
+                    const p = produtos.find(x => x.id === e.target.value);
+                    if (p) setCustoUnitario(p.custoBase.toString());
+                  }} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-700 outline-none">
+                    <option value="">Escolher Produto...</option>
+                    {produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}
+                  </select>
+                </div>
+                <div className="flex gap-3">
+                  <div className="w-1/3">
+                    <input type="number" min="1" placeholder="Qtd" value={quantidadeDesejada} onChange={(e) => setQuantidadeDesejada(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-black text-indigo-700 outline-none text-center" />
+                  </div>
+                  <div className="w-2/3 relative">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span>
+                    <input type="number" step="0.01" placeholder="Custo Un." value={custoUnitario} onChange={(e) => setCustoUnitario(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-black text-slate-700 outline-none" />
+                  </div>
+                </div>
+                <button type="button" onClick={adicionarAoCarrinho} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-widest rounded-xl transition-colors">
+                  + Incluir na Ordem
                 </button>
               </div>
             </div>
-          )}
+          </div>
+
+          <div className="xl:col-span-7 space-y-6">
+            <div className="bg-slate-900 p-8 rounded-3xl shadow-2xl border border-slate-800 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
+              
+              <div className="flex justify-between items-center mb-6 relative z-10">
+                <h3 className="text-white font-black text-xl flex items-center gap-2">🛒 Resumo da Carga</h3>
+                <span className="px-3 py-1 bg-slate-800 text-slate-300 font-mono text-xs rounded-lg border border-slate-700">{itensCarrinho.length} itens</span>
+              </div>
+
+              <div className="bg-[#0b1120] rounded-2xl border border-slate-800 min-h-[250px] p-4 relative z-10">
+                {itensCarrinho.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 opacity-50 py-10">
+                    <span className="text-4xl mb-2">📥</span>
+                    <p className="font-mono text-sm uppercase tracking-widest">Carrinho Vazio</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {itensCarrinho.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center bg-slate-900/80 p-4 rounded-xl border border-slate-800 group hover:border-slate-600 transition-colors">
+                        <div>
+                          <p className="font-bold text-slate-200 text-sm">{item.nome}</p>
+                          <p className="text-[10px] font-mono text-slate-500 mt-1 uppercase tracking-widest">{item.quantidade} un x R$ {item.custoUnitario.toFixed(2)}</p>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <span className="font-mono font-black text-emerald-400 text-lg tracking-tight">R$ {item.subtotal.toFixed(2)}</span>
+                          <button onClick={() => removerDoCarrinho(idx)} className="text-slate-600 hover:text-rose-500 transition-colors">✕</button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-6 relative z-10">
+                <div>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total a Investir</p>
+                  <p className="text-4xl font-black text-white font-mono tracking-tight">R$ {valorTotalOrdem.toFixed(2)}</p>
+                </div>
+                <button onClick={finalizarOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-10 py-4 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.3)] transition-all disabled:opacity-50 disabled:grayscale">
+                  {processandoOrdem ? 'Gerando...' : 'Finalizar Ordem'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* --- ABA 3: LISTA DE FORNECEDORES --- */}
-      {abaAtiva === 'lista' && (
-        <div className="flex flex-col lg:flex-row gap-6 items-start no-print">
-          <div className="w-full lg:w-1/3 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
-            <h3 className="text-lg font-bold text-slate-800 mb-5 border-b border-slate-100 pb-3">{idFornEdicao ? 'Editar' : 'Novo'} Fornecedor</h3>
-            <form onSubmit={lidarSalvarFornecedor} className="space-y-4">
-              <input type="text" required placeholder="Nome / Razão Social" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <input type="text" placeholder="Contato" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl" />
-              <button type="submit" className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold">Salvar</button>
-            </form>
+      {/* ABA 2: RECEBER MERCADORIA E ATUALIZAR ESTOQUE */}
+      {abaAtiva === 'receber' && (
+        <div className="animate-fade-in space-y-10">
+          
+          {/* O LEITOR DE SCANNER HACKER */}
+          <div className="bg-[#064e3b] rounded-[2.5rem] p-10 text-center shadow-xl border border-emerald-900/50 relative overflow-hidden max-w-4xl mx-auto">
+            <div className="absolute top-0 right-1/2 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"></div>
+            
+            <span className="text-6xl block mb-4 relative z-10 drop-shadow-lg">🎯</span>
+            <h3 className="text-3xl font-black text-white mb-2 relative z-10 tracking-tight">Bipe a Ordem de Compra</h3>
+            <p className="text-emerald-300 font-medium mb-8 relative z-10">Com o caminhão na porta, passe o leitor de código de barras ou digite o código da ordem.</p>
+            
+            <div className="max-w-xl mx-auto relative z-10">
+              <input 
+                type="text" 
+                placeholder="Ex: ORD-171829" 
+                value={codigoBip} 
+                onChange={(e) => setCodigoBip(e.target.value)}
+                onKeyDown={lidarBip}
+                className="w-full bg-[#022c22] border-2 border-emerald-500/50 text-emerald-400 text-center text-3xl font-black font-mono py-6 rounded-2xl shadow-inner focus:border-emerald-400 focus:ring-4 focus:ring-emerald-500/20 outline-none transition-all placeholder:text-emerald-900/50"
+              />
+              <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mt-4">Aperte Enter para processar a carga</p>
+            </div>
           </div>
-          <div className="w-full lg:w-2/3 grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <span className="text-2xl">🚚</span>
+              <h3 className="text-xl font-black text-slate-800">Ordens Aguardando Chegada</h3>
+            </div>
+            
+            {comprasAguardando.length === 0 ? (
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center">
+                <span className="text-5xl grayscale opacity-50 block mb-4">🛣️</span>
+                <p className="text-slate-500 font-bold text-lg">Nenhum caminhão a caminho.</p>
+                <p className="text-slate-400 text-sm mt-1">Todas as ordens foram recebidas ou não há pedidos na fábrica.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {comprasAguardando.map(compra => (
+                  <div key={compra.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm hover:shadow-xl transition-all relative overflow-hidden group flex flex-col">
+                    <div className="absolute top-0 left-0 w-full h-1.5 bg-amber-400"></div>
+                    
+                    <div className="flex justify-between items-start mb-5">
+                      <span className="bg-amber-100 text-amber-800 text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-md shadow-sm border border-amber-200">NO CAMINHÃO</span>
+                      <span className="text-slate-400 font-mono text-xs font-bold">{compra.codigoOrdem}</span>
+                    </div>
+
+                    <h3 className="text-lg font-black text-slate-800 mb-5">{compra.fornecedorNome}</h3>
+                    
+                    {/* AQUI ESTÁ A LISTA DE DATAS E VALE (FORMATO TERMINAL) */}
+                    <div className="space-y-3 mb-8 bg-slate-50 p-4 rounded-2xl border border-slate-100 flex-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-black text-slate-400 uppercase tracking-widest text-[9px] bg-slate-200 px-1.5 py-0.5 rounded">EMIT</span>
+                        <span className="font-mono font-bold text-slate-700">{compra.dataCompra.split('-').reverse().join('/')}</span>
+                      </div>
+                      
+                      {compra.dataPagamento && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className={`font-black uppercase tracking-widest text-[9px] px-1.5 py-0.5 rounded ${compra.dataPagamento < new Date().toISOString().split('T')[0] ? 'bg-rose-500 text-white shadow-[0_0_8px_rgba(225,29,72,0.5)]' : 'bg-slate-200 text-slate-400'}`}>VENC</span>
+                          <span className={`font-mono font-bold ${compra.dataPagamento < new Date().toISOString().split('T')[0] ? 'text-rose-600' : 'text-slate-700'}`}>{compra.dataPagamento.split('-').reverse().join('/')}</span>
+                        </div>
+                      )}
+                      
+                      {compra.numeroVale && (
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-black text-slate-400 uppercase tracking-widest text-[9px] bg-slate-200 px-1.5 py-0.5 rounded">VALE</span>
+                          <span className="font-mono font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{compra.numeroVale}</span>
+                        </div>
+                      )}
+                      
+                      <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200 border-dashed">
+                        <span className="font-black text-slate-500 uppercase tracking-widest text-[9px]">Volume da Carga</span>
+                        <span className="font-black text-slate-800">{compra.itens.length} SKU(s)</span>
+                      </div>
+                    </div>
+
+                    <div className="flex justify-between items-center mt-auto border-t border-slate-100 pt-4">
+                      <span className="text-2xl font-black font-mono tracking-tight text-slate-900">R$ {compra.valorTotal.toFixed(2)}</span>
+                      <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-5 py-3 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 hover:border-emerald-500 rounded-xl text-xs font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm">
+                        <span>📦</span> Entrar Estoque
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ABA 3: FORNECEDORES CRUD */}
+      {abaAtiva === 'lista' && (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-fade-in">
+          <div className="xl:col-span-1">
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 sticky top-24">
+              <h3 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-3">{idFornecedorEdicao ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+              <form onSubmit={salvarFornecedor} className="space-y-4">
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nome da Fábrica</label><input type="text" required value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">WhatsApp / Contato</label><input type="text" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Insumo Principal (Ex: Borracha)</label><input type="text" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
+                <div className="pt-2"><button type="submit" className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-md">{idFornecedorEdicao ? 'Atualizar Ficha' : 'Cadastrar Fábrica'}</button></div>
+              </form>
+            </div>
+          </div>
+          
+          <div className="xl:col-span-2 space-y-4">
             {fornecedores.map(forn => (
-              <div key={forn.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group">
-                <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
-                  <button onClick={() => { setIdFornEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); }} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">✏️</button>
-                  <button onClick={() => lidarExcluirFornecedor(forn.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100">🗑️</button>
+              <div key={forn.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-indigo-200 transition-colors">
+                <div>
+                  <h4 className="text-lg font-black text-slate-800 leading-tight">{forn.nome}</h4>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{forn.contato} • <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">{forn.categoriaInsumo || 'Geral'}</span></p>
                 </div>
-                <h4 className="font-black text-lg pr-12">{forn.nome}</h4>
-                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 flex items-center gap-2 mt-3"><span>📱</span><p className="text-sm font-medium">{forn.contato || 'Sem contato'}</p></div>
+                <div className="flex gap-2">
+                  <button onClick={() => { setIdFornecedorEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-10 h-10 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-xl border border-slate-200 flex items-center justify-center transition-colors">✏️</button>
+                  <button onClick={async () => { if(window.confirm("Excluir fornecedor?")) await deleteDoc(doc(db, 'usuarios', auth.currentUser!.uid, 'fornecedores', forn.id)); }} className="w-10 h-10 bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl border border-rose-200 flex items-center justify-center transition-colors">✕</button>
+                </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
     </div>
   );
 }
