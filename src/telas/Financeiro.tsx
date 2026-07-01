@@ -78,7 +78,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     if (!file) return;
 
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada no Vercel.");
+    if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada.");
 
     setProcessandoIA(true);
 
@@ -112,9 +112,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       const catExiste = categoriasDespesa.find(c => c.nome.toLowerCase() === dadosExtraidos.categoria?.toLowerCase());
       setCategoria(catExiste ? catExiste.nome : (dadosExtraidos.categoria || 'Outros'));
       
-      alert("✅ Uplink Concluído. Dados injetados no sistema. Confirme.");
+      alert("✅ Leitura concluída com sucesso! Confirme os dados e salve.");
     } catch (error: any) {
-      alert(`❌ Erro no Uplink:\n\n${error.message}`);
+      alert(`❌ Erro na leitura do comprovante:\n\n${error.message}`);
     } finally {
       setProcessandoIA(false); event.target.value = '';
     }
@@ -293,13 +293,21 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
-      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 10px; } .no-print { display: none !important; } }`}} />
+      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; background-color: white; } .no-print { display: none !important; } }`}} />
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
-        <div><h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2><p className="text-slate-500 font-medium mt-1">Gestão de liquidez e visibilidade avançada do seu caixa.</p></div>
-        <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
-          <span className="text-lg">⚙️</span> {mostrarRelatorio ? 'Ocultar Filtros' : 'Filtros Avançados'}
-        </button>
+        <div>
+          <h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2>
+          <p className="text-slate-500 font-medium mt-1">Gestão de liquidez e visibilidade avançada do seu caixa.</p>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={() => window.print()} className="px-6 py-3.5 rounded-2xl font-black flex items-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all duration-300 shadow-sm whitespace-nowrap">
+            <span className="text-lg">🖨️</span> Exportar PDF
+          </button>
+          <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm whitespace-nowrap ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
+            <span className="text-lg">⚙️</span> {mostrarRelatorio ? 'Ocultar Filtros' : 'Filtros Avançados'}
+          </button>
+        </div>
       </header>
 
       {mostrarRelatorio && (
@@ -612,11 +620,59 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         </div>
       )}
 
-      <div id="relatorio-financeiro-pdf" className="hidden print:block w-full">
-        <h1 className="text-2xl font-black text-slate-900 uppercase mb-6 border-b-2 border-slate-800 pb-2">Relatório Extraído</h1>
-        <table className="w-full text-left text-xs border-collapse">
-          <thead><tr className="bg-slate-100"><th className="p-2">Data</th><th className="p-2">Descrição</th><th className="p-2">Categoria</th><th className="p-2 text-right">Valor</th></tr></thead>
-          <tbody>{lancamentosFiltrados.map(l => (<tr key={l.id} className="border-b border-slate-200"><td className="p-2">{l.dataVencimento.split('-').reverse().join('/')}</td><td className="p-2">{l.descricao}</td><td className="p-2">{l.categoria}</td><td className={`p-2 text-right font-black ${l.tipo==='despesa'?'text-rose-600':'text-emerald-600'}`}>R$ {l.valor.toFixed(2)}</td></tr>))}</tbody>
+      <div id="relatorio-financeiro-pdf" className="hidden print:block w-full bg-white text-slate-900">
+        <div className="flex justify-between items-end border-b-4 border-slate-900 pb-6 mb-8">
+          <div>
+            <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tight">Extrato Financeiro</h1>
+            <p className="text-slate-500 font-bold mt-2 text-sm">Documento Extraído: {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+          </div>
+          <div className="flex gap-8">
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Receitas Validadas</p>
+              <p className="text-2xl font-black text-emerald-600 font-mono tracking-tight">R$ {resumoFiltrado.receitas.toFixed(2)}</p>
+            </div>
+            <div className="w-px bg-slate-200"></div>
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Saídas Processadas</p>
+              <p className="text-2xl font-black text-rose-600 font-mono tracking-tight">R$ {resumoFiltrado.despesas.toFixed(2)}</p>
+            </div>
+            <div className="w-px bg-slate-200"></div>
+            <div className="text-right">
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Saldo Líquido</p>
+              <p className={`text-2xl font-black font-mono tracking-tight ${resumoFiltrado.saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p>
+            </div>
+          </div>
+        </div>
+        
+        <table className="w-full text-left text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-100 border-b-2 border-slate-300">
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px]">Data Emissão</th>
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px]">Data Venc.</th>
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px]">Descrição da Transação</th>
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px]">Centro de Custo</th>
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px]">Status</th>
+              <th className="p-3 font-black text-slate-600 uppercase tracking-widest text-[10px] text-right">Valor Operado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lancamentosFiltrados.map(l => (
+              <tr key={l.id} className="border-b border-slate-200">
+                <td className="p-3 font-mono">{l.dataLancamento ? l.dataLancamento.split('-').reverse().join('/') : '---'}</td>
+                <td className="p-3 font-mono font-bold">{l.dataVencimento.split('-').reverse().join('/')}</td>
+                <td className="p-3 font-bold text-slate-800">{l.descricao}</td>
+                <td className="p-3 text-slate-500">{l.categoria}</td>
+                <td className="p-3">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${l.status === 'pago' ? 'bg-slate-200 text-slate-600' : 'bg-rose-100 text-rose-600'}`}>
+                    {l.status}
+                  </span>
+                </td>
+                <td className={`p-3 text-right font-black font-mono text-lg ${l.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>
+                  {l.tipo === 'despesa' ? '-' : '+'} R$ {l.valor.toFixed(2)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
         </table>
       </div>
 
