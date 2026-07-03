@@ -34,7 +34,10 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const [codigo, setCodigo] = useState('');
   const [categoriaSelecionada, setCategoriaSelecionada] = useState('');
   const [custoBase, setCustoBase] = useState('');
-  const [custosAtivos, setCustosAtivos] = useState<string[]>([]);
+  
+  // NOVO: Agora guarda o ID e o VALOR customizado do custo!
+  const [custosSelecionados, setCustosSelecionados] = useState<Record<string, number>>({});
+  
   const [tipoLucro, setTipoLucro] = useState<'porcentagem' | 'reais'>('reais');
   const [valorLucro, setValorLucro] = useState('');
   const [estoque, setEstoque] = useState('');
@@ -49,7 +52,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
 
   const limparFormulario = () => {
     setIdEdicao(null); setFoto(''); setTitulo(''); setCodigo('');
-    setCategoriaSelecionada(''); setCustoBase(''); setCustosAtivos([]);
+    setCategoriaSelecionada(''); setCustoBase(''); setCustosSelecionados({});
     setTipoLucro('reais'); setValorLucro(''); setEstoque(''); setEstoqueMinimo('');
   };
 
@@ -106,7 +109,16 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     setCodigo(produto.codigo || '');
     setCategoriaSelecionada(produto.categoria || '');
     setCustoBase(produto.custoBase.toString());
-    setCustosAtivos(produto.custosAdicionais ? produto.custosAdicionais.map(c => c.id) : []);
+    
+    // Injeta os custos dinâmicos gravados anteriormente
+    const objCustos: Record<string, number> = {};
+    if (produto.custosAdicionais) {
+      produto.custosAdicionais.forEach(c => {
+        objCustos[c.id] = c.valor;
+      });
+    }
+    setCustosSelecionados(objCustos);
+
     setTipoLucro(produto.tipoLucro || 'reais');
     setValorLucro(produto.valorLucro.toString());
     setEstoque((produto.estoque || 0).toString());
@@ -153,10 +165,8 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
         const ref = doc(db, 'usuarios', userId, 'produtos', id);
         
         if (operacaoLote === 'definir') {
-          // Zera o passado e define o número absoluto
           batch.update(ref, { estoque: Math.max(0, qtdLote) });
         } else {
-          // Operação 'somar' (Se digitar negativo, ele subtrai)
           const prodAtual = produtos.find(p => p.id === id);
           const estoqueExistente = prodAtual?.estoque || 0;
           const novoEstoqueSomado = Math.max(0, estoqueExistente + qtdLote);
@@ -186,7 +196,13 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     
     const numCustoBase = parseFloat(custoBase) || 0;
-    const cAdicionais = custosPadrao.filter(c => custosAtivos.includes(c.id)).map(c => ({ id: c.id, nome: c.nome, valor: c.valor }));
+    
+    // Calcula os custos adicionais respeitando o valor customizado digitado
+    const cAdicionais = Object.keys(custosSelecionados).map(id => {
+      const cp = custosPadrao.find(x => x.id === id);
+      return { id: id, nome: cp ? cp.nome : 'Extra', valor: custosSelecionados[id] };
+    });
+
     const totalAdicionais = cAdicionais.reduce((acc, c) => acc + c.valor, 0);
     const custoTotalFinal = numCustoBase + totalAdicionais;
     
@@ -251,17 +267,57 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
           </div>
 
           <div className="border-t border-slate-100 pt-8">
-            <h3 className="text-lg font-black text-slate-800 mb-4">Estrutura de Custos (Custo de Fábrica)</h3>
+            <h3 className="text-lg font-black text-slate-800 mb-4">Estrutura de Custos Dinâmica</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div>
-                <p className="text-xs font-bold text-slate-500 mb-2">Custo Fixo de Produção / Compra</p>
+                <p className="text-xs font-bold text-slate-500 mb-2">Custo Fixo de Produção / Compra Base</p>
                 <div className="relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span><input type="number" step="0.01" required value={custoBase} onChange={e => setCustoBase(e.target.value)} className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-xl font-black text-2xl text-slate-800 outline-none focus:border-blue-500 transition-colors" /></div>
               </div>
-              <div className="bg-white p-4 rounded-xl border border-slate-200 h-48 overflow-y-auto">
-                <p className="text-xs font-bold text-slate-500 mb-3">Custos de Embalagem & Variáveis (Somados ao Custo)</p>
-                {custosPadrao.map(c => (
-                  <label key={c.id} className="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-colors border border-transparent hover:border-slate-100"><input type="checkbox" checked={custosAtivos.includes(c.id)} onChange={(e) => { if(e.target.checked) setCustosAtivos([...custosAtivos, c.id]); else setCustosAtivos(custosAtivos.filter(id => id !== c.id)); }} className="w-5 h-5 accent-blue-600 rounded" /><span className="text-xl">{c.icone}</span><span className="flex-1 font-bold text-sm text-slate-700">{c.nome}</span><span className="font-black text-blue-600 text-sm">+ R$ {c.valor.toFixed(2)}</span></label>
-                ))}
+              <div className="bg-white p-4 rounded-xl border border-slate-200 h-64 overflow-y-auto shadow-inner">
+                <p className="text-xs font-bold text-slate-500 mb-3">Custos Variáveis & Embalagem (Edite por produto)</p>
+                
+                {/* MOTOR DE CUSTOS DINÂMICOS */}
+                <div className="space-y-1">
+                  {custosPadrao.map(c => {
+                    const isChecked = custosSelecionados[c.id] !== undefined;
+                    return (
+                      <div key={c.id} className={`flex items-center gap-3 p-2.5 rounded-xl transition-all border ${isChecked ? 'bg-blue-50/50 border-blue-200 shadow-sm' : 'hover:bg-slate-50 border-transparent hover:border-slate-200'}`}>
+                        <input 
+                          type="checkbox" 
+                          checked={isChecked} 
+                          onChange={(e) => {
+                            const novos = { ...custosSelecionados };
+                            if (e.target.checked) novos[c.id] = c.valor; // Seta o valor padrão ao marcar
+                            else delete novos[c.id]; // Remove ao desmarcar
+                            setCustosSelecionados(novos);
+                          }} 
+                          className="w-5 h-5 accent-blue-600 rounded cursor-pointer shrink-0" 
+                        />
+                        <span className="text-xl shrink-0">{c.icone}</span>
+                        <span className="flex-1 font-bold text-sm text-slate-700 truncate">{c.nome}</span>
+                        
+                        {isChecked ? (
+                          <div className="relative w-28 shrink-0 animate-fade-in">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-500 font-black text-[10px]">R$</span>
+                            <input 
+                              type="number" 
+                              step="0.01" 
+                              value={custosSelecionados[c.id] === 0 ? '' : custosSelecionados[c.id]} 
+                              onChange={e => {
+                                const val = parseFloat(e.target.value) || 0;
+                                setCustosSelecionados({...custosSelecionados, [c.id]: val});
+                              }} 
+                              className="w-full pl-8 pr-2 py-1.5 bg-white border border-blue-300 rounded-lg text-sm font-black text-blue-700 outline-none focus:ring-2 focus:ring-blue-500 transition-shadow" 
+                            />
+                          </div>
+                        ) : (
+                          <span className="font-black text-slate-400 text-sm shrink-0">+ R$ {c.valor.toFixed(2)}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
               </div>
             </div>
           </div>
@@ -406,7 +462,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                           {produto.estoque} UN ✏️
                         </button>
                         
-                        {/* EDIÇÃO COMPLETA E EXCLUSÃO RECUPERADOS */}
                         <button onClick={() => iniciarEdicao(produto)} className="w-7 h-7 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg flex items-center justify-center transition-colors shadow-sm" title="Editar Produto">✏️</button>
                         <button onClick={() => lidarExcluir(produto.id)} className="w-7 h-7 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-lg flex items-center justify-center transition-colors shadow-sm" title="Excluir Produto">✕</button>
                       </div>
@@ -442,7 +497,6 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                             <div key={plat.id} className="bg-white border border-slate-200 px-3 py-2 rounded-xl shadow-sm flex flex-col justify-center min-w-[110px]">
                               <div className="flex items-center gap-1.5 mb-1 text-slate-500">
                                 
-                                {/* CORREÇÃO DA IMAGEM DA LOGO AQUI */}
                                 {plat.logo.startsWith('http') || plat.logo.startsWith('data:') ? (
                                   <img src={plat.logo} alt={plat.nome} className="w-4 h-4 object-contain rounded-sm shrink-0" />
                                 ) : (
@@ -494,7 +548,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido (Cliente pagou)</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">R$</span>
                   <input type="number" step="0.01" required placeholder="0.00" value={pdvValorFinal} onChange={e => setPdvValorFinal(e.target.value)} className="w-full pl-14 pr-4 py-5 bg-emerald-50 border border-emerald-200 focus:border-emerald-500 rounded-xl font-black text-3xl text-emerald-600 outline-none transition-all placeholder:text-emerald-300 shadow-inner" />
