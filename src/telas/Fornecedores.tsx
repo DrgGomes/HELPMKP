@@ -101,10 +101,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
       console.error(e);
       alert("Falha ao gerar ordem.");
     }
-    boxLimparForm();
-  };
-
-  const boxLimparForm = () => {
     setProcessandoOrdem(false);
   };
 
@@ -184,7 +180,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         });
       });
       await batch.commit();
-      alert("✅ Sincronização retroativa executada.");
+      alert("✅ Sincronização retroativa executada com sucesso.");
     } catch(e) {
       console.error(e);
     }
@@ -204,7 +200,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     if (!nomeForn) return;
     const userId = auth.currentUser?.uid; if (!userId) return;
 
-    const dados = { nome: nomeForn, contato: contatoForn, categoriaInsumo: categoriaForn };
+    const dados = { nome: nomeForn, contato: contatoForn, categoryInsumo: categoriaForn };
     if (idFornecedorEdicao) {
       await updateDoc(doc(db, 'usuarios', userId, 'fornecedores', idFornecedorEdicao), dados);
     } else {
@@ -216,8 +212,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       
-      {/* CSS ISOLANTE DE IMPRESSÃO */}
-      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #ordem-compra-print, #ordem-compra-print * { visibility: visible; } #ordem-compra-print { position: absolute; left: 0; top: 0; width: 100%; background: white; color: black; padding: 0px; } .no-print { display: none !important; } }`}} />
+      {/* CSS DE IMPRESSÃO - CORRIGIDO E ISOLADO */}
+      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #ordem-compra-print, #ordem-compra-print * { visibility: visible !important; } #ordem-compra-print { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 0px !important; } .no-print { display: none !important; } }`}} />
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
@@ -289,7 +285,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               </div>
               <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Total Líquido</p><p className="text-3xl font-black text-slate-900 font-mono">R$ {valorTotalOrdem.toFixed(2)}</p></div>
-                <button onClick={finalizarOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md shadow-emerald-500/20">{processandoOrdem ? 'Processando...' : 'Gravar e Enviar Ordem'}</button>
+                <button onClick={finalizerOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md shadow-emerald-500/20">{processandoOrdem ? 'Processando...' : 'Gravar e Enviar Ordem'}</button>
               </div>
             </div>
           </div>
@@ -378,7 +374,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         </div>
       )}
 
-      {/* HISTÓRICO COMPLETO DE ORDENS DE COMPRA (FAÇA MAIS DO QUE PEÇO) */}
+      {/* HISTÓRICO COMPLETO DE ORDENS DE COMPRA */}
       <div className="mt-12 no-print">
         <div className="flex items-center gap-3 mb-6"><span className="text-2xl">📋</span><h3 className="text-xl font-black text-slate-800">Histórico de Ordens / Arquivo Log</h3></div>
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
@@ -421,12 +417,13 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         </div>
       </div>
 
-      {/* MODAL / ESPELHO DE IMPRESSÃO DA ORDEM DE COMPRA (INTERAÇÃO INTERNA + PRINT PREP) */}
+      {/* MODAL / ESPELHO DE IMPRESSÃO DA ORDEM DE COMPRA (A CLASSE no-print FOI REMOVIDA DA CAIXA PAI) */}
       {ordemParaImprimir && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in no-print">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
             
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+            {/* CABEÇALHO DO MODAL OCULTO NA IMPRESSÃO */}
+            <div className="bg-slate-900 p-6 text-white flex justify-between items-center no-print">
               <div>
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
                 <h3 className="text-2xl font-black">{ordemParaImprimir.codigoOrdem}</h3>
@@ -505,7 +502,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
 
             </div>
 
-            <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto">
+            {/* RODAPÉ DO MODAL OCULTO NA IMPRESSÃO */}
+            <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto no-print">
               <button onClick={() => setOrdemParaImprimir(null)} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors">Voltar</button>
               <button onClick={() => window.print()} className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all transform hover:scale-105">
                 🖨️ Disparar Impressão A4
