@@ -35,7 +35,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const [categoriaSelecionada, setCategoriaSelecionada] = useState('');
   const [custoBase, setCustoBase] = useState('');
   
-  // NOVO: Agora guarda o ID e o VALOR customizado do custo!
+  // Guarda o ID e o VALOR customizado do custo!
   const [custosSelecionados, setCustosSelecionados] = useState<Record<string, number>>({});
   
   const [tipoLucro, setTipoLucro] = useState<'porcentagem' | 'reais'>('reais');
@@ -49,6 +49,11 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
   const [estoqueLote, setEstoqueLote] = useState('');
   const [operacaoLote, setOperacaoLote] = useState<'definir' | 'somar'>('definir');
   const [processandoLote, setProcessandoLote] = useState(false);
+
+  // --- CÁLCULO EM TEMPO REAL DO CUSTO TOTAL (NOVO) ---
+  const numCustoBaseRealTime = parseFloat(custoBase.toString().replace(',','.')) || 0;
+  const totalAdicionaisRealTime = Object.values(custosSelecionados).reduce((acc, val) => acc + (parseFloat(val.toString().replace(',','.')) || 0), 0);
+  const custoTotalRealTime = numCustoBaseRealTime + totalAdicionaisRealTime;
 
   const limparFormulario = () => {
     setIdEdicao(null); setFoto(''); setTitulo(''); setCodigo('');
@@ -195,20 +200,15 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
     e.preventDefault();
     const userId = auth.currentUser?.uid as string; if (!userId) return;
     
-    const numCustoBase = parseFloat(custoBase) || 0;
-    
     // Calcula os custos adicionais respeitando o valor customizado digitado
     const cAdicionais = Object.keys(custosSelecionados).map(id => {
       const cp = custosPadrao.find(x => x.id === id);
       return { id: id, nome: cp ? cp.nome : 'Extra', valor: custosSelecionados[id] };
     });
 
-    const totalAdicionais = cAdicionais.reduce((acc, c) => acc + c.valor, 0);
-    const custoTotalFinal = numCustoBase + totalAdicionais;
-    
     const produtoDados = {
-      foto, titulo, codigo, categoria: categoriaSelecionada, custoBase: numCustoBase,
-      custosAdicionais: cAdicionais, custoTotal: custoTotalFinal, tipoLucro,
+      foto, titulo, codigo, categoria: categoriaSelecionada, custoBase: numCustoBaseRealTime,
+      custosAdicionais: cAdicionais, custoTotal: custoTotalRealTime, tipoLucro,
       valorLucro: parseFloat(valorLucro) || 0, estoque: parseInt(estoque) || 0, estoqueMinimo: parseInt(estoqueMinimo) || 0
     };
 
@@ -317,9 +317,15 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
                     );
                   })}
                 </div>
-
               </div>
             </div>
+
+            {/* AQUI ESTÁ O NOVO PAINEL DE SOMA EM TEMPO REAL */}
+            <div className="mt-6 flex flex-col sm:flex-row justify-between items-center bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-sm">
+              <p className="text-xs font-black text-slate-500 uppercase tracking-widest mb-1 sm:mb-0">Custo Total de Produção Estimado</p>
+              <p className="text-3xl font-black text-slate-800 font-mono tracking-tight">R$ {custoTotalRealTime.toFixed(2)}</p>
+            </div>
+
           </div>
 
           <div className="bg-slate-900 p-8 rounded-2xl shadow-xl flex flex-col md:flex-row items-center gap-6 relative overflow-hidden">
@@ -548,7 +554,7 @@ export default function Produtos({ telaAtiva, setTelaAtiva, produtos, plataforma
               </div>
 
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido (Cliente pagou)</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor Total Recebido</label>
                 <div className="relative">
                   <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black text-xl">R$</span>
                   <input type="number" step="0.01" required placeholder="0.00" value={pdvValorFinal} onChange={e => setPdvValorFinal(e.target.value)} className="w-full pl-14 pr-4 py-5 bg-emerald-50 border border-emerald-200 focus:border-emerald-500 rounded-xl font-black text-3xl text-emerald-600 outline-none transition-all placeholder:text-emerald-300 shadow-inner" />
