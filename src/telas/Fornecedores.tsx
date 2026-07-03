@@ -3,13 +3,7 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'fireb
 import { db, auth } from '../firebase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
 
-interface FornecedoresProps {
-  fornecedores: Fornecedor[];
-  produtos: Produto[];
-  compras: Compra[];
-}
-
-export default function Fornecedores({ fornecedores, produtos, compras }: FornecedoresProps) {
+export default function Fornecedores({ fornecedores, produtos, compras }: { fornecedores: Fornecedor[], produtos: Produto[], compras: Compra[] }) {
   const [abaAtiva, setAbaAtiva] = useState<'gerar' | 'receber' | 'lista'>('receber');
 
   // --- ESTADOS PARA ABA: GERAR ORDEM ---
@@ -200,7 +194,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
     if (!nomeForn) return;
     const userId = auth.currentUser?.uid; if (!userId) return;
 
-    const dados = { nome: nomeForn, contato: contatoForn, categoryInsumo: categoriaForn };
+    const dados = { nome: nomeForn, contato: contatoForn, categoriaInsumo: categoriaForn };
     if (idFornecedorEdicao) {
       await updateDoc(doc(db, 'usuarios', userId, 'fornecedores', idFornecedorEdicao), dados);
     } else {
@@ -271,7 +265,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                   <div className="w-1/3"><input type="number" min="1" placeholder="Qtd" value={quantidadeDesejada} onChange={(e) => setQuantidadeDesejada(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-black text-indigo-700 outline-none text-center" /></div>
                   <div className="w-2/3 relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span><input type="number" step="0.01" placeholder="0.00" value={custoUnitario} onChange={(e) => setCustoUnitario(e.target.value)} className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-lg text-slate-800 outline-none focus:border-indigo-500" /></div>
                 </div>
-                <button type="button" onClick={adicionarAoCarrinho} className="w-full py-2.5 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider">Incluir na Lista</button>
+                <button type="button" onClick={adicionarAoCarrinho} className="w-full py-2.5 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-colors hover:bg-indigo-700">Incluir na Lista</button>
               </div>
             </div>
           </div>
@@ -280,12 +274,12 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               <div>
                 <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Itens Mapeados na Ordem</p>
                 {itensCarrinho.length === 0 ? <p className="text-sm font-bold text-slate-400 text-center py-20">Nenhum insumo adicionado.</p> : (
-                  <div className="divide-y divide-slate-100">{itensCarrinho.map((item, idx) => <div key={idx} className="py-3 flex justify-between items-center"><div className="min-w-0"><p className="font-bold text-slate-800 text-sm truncate">{item.nome}</p><p className="text-[10px] text-slate-400 font-bold">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div><div className="flex items-center gap-4"><span className="font-black text-slate-700 text-sm">R$ {item.subtotal.toFixed(2)}</span><button type="button" onClick={() => removerDoCarrinho(idx)} className="text-rose-500 font-bold text-sm">✕</button></div></div>)}</div>
+                  <div className="divide-y divide-slate-100">{itensCarrinho.map((item, idx) => <div key={idx} className="py-3 flex justify-between items-center"><div className="min-w-0"><p className="font-bold text-slate-800 text-sm truncate">{item.nome}</p><p className="text-[10px] text-slate-400 font-bold">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div><div className="flex items-center gap-4"><span className="font-black text-slate-700 text-sm">R$ {item.subtotal.toFixed(2)}</span><button type="button" onClick={() => removerDoCarrinho(idx)} className="text-rose-500 font-bold text-sm hover:text-rose-600">✕</button></div></div>)}</div>
                 )}
               </div>
               <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
                 <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Total Líquido</p><p className="text-3xl font-black text-slate-900 font-mono">R$ {valorTotalOrdem.toFixed(2)}</p></div>
-                <button onClick={finalizerOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md shadow-emerald-500/20">{processandoOrdem ? 'Processando...' : 'Gravar e Enviar Ordem'}</button>
+                <button onClick={finalizarOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-colors">{processandoOrdem ? 'Processando...' : 'Gravar e Enviar Ordem'}</button>
               </div>
             </div>
           </div>
@@ -298,7 +292,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
           {comprasSemFatura.length > 0 && (
             <div className="bg-rose-950 border border-rose-500/50 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl animate-pulse">
               <div><h3 className="text-rose-400 font-black text-lg flex items-center gap-2"><span>🚨</span> Alerta de Auditoria</h3><p className="text-rose-200/70 font-medium text-sm mt-1">Existem ordens recebidas que não geraram lançamento financeiro automático. Clique ao lado para regularizar.</p></div>
-              <button onClick={corrigirFaturasAntigas} disabled={processandoRecebimento} className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-widest rounded-xl text-xs whitespace-nowrap">{processandoRecebimento ? 'Processando...' : 'Sincronizar com Caixa'}</button>
+              <button onClick={corrigirFaturasAntigas} disabled={processandoRecebimento} className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-widest rounded-xl text-xs whitespace-nowrap transition-colors disabled:opacity-50">{processandoRecebimento ? 'Processando...' : 'Sincronizar com Caixa'}</button>
             </div>
           )}
 
@@ -307,7 +301,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
             <h3 className="text-3xl font-black text-white mb-2 tracking-tight">Bipe a Ordem de Compra</h3>
             <p className="text-emerald-300 font-medium mb-8">Passe o leitor de código de barras físico no vale impresso para dar entrada automática.</p>
             <div className="max-w-xl mx-auto">
-              <input type="text" placeholder="Ex: ORD-171829" value={codigoBip} onChange={(e) => setCodigoBip(e.target.value)} onKeyDown={lidarBip} className="w-full bg-[#022c22] border-2 border-emerald-500/50 text-emerald-400 text-center text-3xl font-black font-mono py-6 rounded-2xl outline-none placeholder:text-emerald-900/40 focus:border-emerald-400" />
+              <input type="text" placeholder="Ex: ORD-171829" value={codigoBip} onChange={(e) => setCodigoBip(e.target.value)} onKeyDown={lidarBip} className="w-full bg-[#022c22] border-2 border-emerald-500/50 text-emerald-400 text-center text-3xl font-black font-mono py-6 rounded-2xl outline-none placeholder:text-emerald-900/40 focus:border-emerald-400 transition-colors" />
             </div>
           </div>
 
@@ -320,7 +314,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                 {comprasAguardando.map(compra => {
                   const isAtrasado = compra.dataPagamento && compra.dataPagamento < new Date().toISOString().split('T')[0];
                   return (
-                    <div key={compra.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+                    <div key={compra.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
                       <div>
                         <div className="flex justify-between items-start mb-4"><span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2.5 py-1 rounded-md border border-amber-200 uppercase">Aguardando</span><span className="text-slate-400 font-mono text-xs font-bold">{compra.codigoOrdem}</span></div>
                         <h3 className="text-lg font-black text-slate-800 mb-4">{compra.fornecedorNome}</h3>
@@ -333,8 +327,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                       <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                         <span className="text-xl font-black font-mono tracking-tight">R$ {compra.valorTotal.toFixed(2)}</span>
                         <div className="flex gap-2">
-                          <button onClick={() => setOrdemParaImprimir(compra)} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
-                          <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all">Receber</button>
+                          <button onClick={() => setOrdemParaImprimir(compra)} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm transition-colors" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
+                          <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50">Receber</button>
                         </div>
                       </div>
                     </div>
@@ -353,20 +347,20 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 sticky top-24">
               <h3 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-3">{idFornecedorEdicao ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
               <form onSubmit={salvarFornecedor} className="space-y-4">
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nome da Fábrica</label><input type="text" required value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">WhatsApp / Contato</label><input type="text" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Insumo Principal</label><input type="text" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nome da Fábrica</label><input type="text" required value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">WhatsApp / Contato</label><input type="text" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Insumo Principal</label><input type="text" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
                 <div className="pt-2"><button type="submit" className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-md">{idFornecedorEdicao ? 'Atualizar Ficha' : 'Cadastrar Fábrica'}</button></div>
               </form>
             </div>
           </div>
           <div className="xl:col-span-2 space-y-4">
             {fornecedores.map(forn => (
-              <div key={forn.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div key={forn.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-indigo-200 transition-colors">
                 <div><h4 className="text-lg font-black text-slate-800 leading-tight">{forn.nome}</h4><p className="text-xs font-bold text-slate-500 mt-1">{forn.contato} • <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-black">{forn.categoriaInsumo || 'Geral'}</span></p></div>
                 <div className="flex gap-2">
-                  <button onClick={() => { setIdFornecedorEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-10 h-10 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-xl border border-slate-200 flex items-center justify-center">✏️</button>
-                  <button onClick={async () => { if(window.confirm("Excluir fornecedor?")) await deleteDoc(doc(db, 'usuarios', auth.currentUser!.uid, 'fornecedores', forn.id)); }} className="w-10 h-10 bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl border border-rose-200 flex items-center justify-center">✕</button>
+                  <button onClick={() => { setIdFornecedorEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-10 h-10 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-xl border border-slate-200 flex items-center justify-center transition-colors">✏️</button>
+                  <button onClick={async () => { if(window.confirm("Excluir fornecedor?")) await deleteDoc(doc(db, 'usuarios', auth.currentUser!.uid, 'fornecedores', forn.id)); }} className="w-10 h-10 bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl border border-rose-200 flex items-center justify-center transition-colors">✕</button>
                 </div>
               </div>
             ))}
@@ -407,7 +401,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                     </td>
                     <td className="p-4 font-mono text-right font-black text-slate-900">R$ {c.valorTotal.toFixed(2)}</td>
                     <td className="p-4 text-center">
-                      <button onClick={() => setOrdemParaImprimir(c)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg border border-slate-200 transition-colors text-[10px] font-black uppercase tracking-widest">🖨️ Reativar Print</button>
+                      <button onClick={() => setOrdemParaImprimir(c)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg border border-slate-200 transition-colors text-[10px] font-black uppercase tracking-widest shadow-sm">🖨️ Ficha</button>
                     </td>
                   </tr>
                 ))}
@@ -417,12 +411,11 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         </div>
       </div>
 
-      {/* MODAL / ESPELHO DE IMPRESSÃO DA ORDEM DE COMPRA (A CLASSE no-print FOI REMOVIDA DA CAIXA PAI) */}
+      {/* MODAL / ESPELHO DE IMPRESSÃO DA ORDEM DE COMPRA */}
       {ordemParaImprimir && (
         <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in">
           <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
             
-            {/* CABEÇALHO DO MODAL OCULTO NA IMPRESSÃO */}
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center no-print">
               <div>
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
@@ -433,7 +426,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
 
             <div className="p-8 overflow-y-auto flex-1 space-y-8">
               
-              {/* LAYOUT DO VALE IMPRESSO (A4 REPLICA) */}
               <div id="ordem-compra-print" className="bg-white text-black p-2 font-sans">
                 <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
                   <div>
@@ -447,7 +439,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                     </div>
                   </div>
                   
-                  {/* CENTRAL DE CÓDIGOS EM ALTA DEFINIÇÃO */}
                   <div className="text-center space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
                     <div>
                       <img 
@@ -502,11 +493,10 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
 
             </div>
 
-            {/* RODAPÉ DO MODAL OCULTO NA IMPRESSÃO */}
             <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto no-print">
-              <button onClick={() => setOrdemParaImprimir(null)} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors">Voltar</button>
+              <button onClick={() => setOrdemParaImprimir(null)} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Voltar</button>
               <button onClick={() => window.print()} className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all transform hover:scale-105">
-                🖨️ Disparar Impressão A4
+                🖨️ Imprimir A4
               </button>
             </div>
 
