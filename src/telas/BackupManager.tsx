@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import type { Produto, Compra, LancamentoFinanceiro, CustoPadrao } from '../types';
 
 interface BackupManagerProps {
