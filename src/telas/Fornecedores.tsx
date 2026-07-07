@@ -3,13 +3,7 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'fireb
 import { db, auth } from '../firebase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
 
-interface FornecedoresProps {
-  fornecedores: Fornecedor[];
-  produtos: Produto[];
-  compras: Compra[];
-}
-
-export default function Fornecedores({ fornecedores, produtos, compras }: FornecedoresProps) {
+export default function Fornecedores({ fornecedores, produtos, compras }: { fornecedores: Fornecedor[], produtos: Produto[], compras: Compra[] }) {
   const [abaAtiva, setAbaAtiva] = useState<'gerar' | 'receber' | 'lista'>('receber');
 
   // --- ESTADOS PARA ABA: GERAR ORDEM ---
@@ -213,8 +207,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       
-      {/* CSS DE IMPRESSÃO OTIMIZADO PARA LOTE CONTÍNUO */}
-      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #ordem-compra-print, #ordem-compra-print * { visibility: visible !important; } #ordem-compra-print { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 0px !important; } .no-print { display: none !important; } }`}} />
+      {/* CSS DE IMPRESSÃO - CORRIGIDO: VISIBILIDADE FORÇADA */}
+      <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #ordem-compra-print, #ordem-compra-print * { visibility: visible !important; } #ordem-compra-print { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 0px !important; margin: 0px !important; } .no-print { display: none !important; } }`}} />
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
@@ -334,7 +328,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                       <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                         <span className="text-xl font-black font-mono tracking-tight">R$ {compra.valorTotal.toFixed(2)}</span>
                         <div className="flex gap-2">
-                          {/* CHAMA O MODAL DE IMPRESSÃO COMO ARRAY PARA MANTER O PADRÃO */}
                           <button onClick={() => setOrdensParaImprimir([compra])} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm transition-colors" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
                           <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50">Receber</button>
                         </div>
@@ -404,7 +397,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               <thead>
                 <tr className="bg-slate-900 text-white font-black uppercase tracking-widest text-[9px] border-b border-slate-800">
                   <th className="p-4 w-12 text-center">
-                    {/* CHECKBOX SELECIONAR TODOS */}
                     <input 
                       type="checkbox"
                       checked={selecionadosImpressao.length === compras.length && compras.length > 0}
@@ -429,7 +421,6 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
                 {compras.map(c => (
                   <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${selecionadosImpressao.includes(c.id) ? 'bg-indigo-50/30' : ''}`}>
                     <td className="p-4 text-center">
-                      {/* CHECKBOX INDIVIDUAL */}
                       <input 
                         type="checkbox"
                         checked={selecionadosImpressao.includes(c.id)}
@@ -465,11 +456,12 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
         </div>
       </div>
 
-      {/* MODAL MESTRE DE IMPRESSÃO EM LOTE (A CLASSE no-print ESTÁ NA CAIXA PAI) */}
+      {/* MODAL MESTRE DE IMPRESSÃO EM LOTE (A CLASSE no-print FOI REMOVIDA DAQUI) */}
       {ordensParaImprimir && ordensParaImprimir.length > 0 && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in no-print">
-          <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in print:bg-white print:p-0">
+          <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:rounded-none">
             
+            {/* CABEÇALHO DO MODAL - OCULTO NA IMPRESSÃO */}
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center no-print">
               <div>
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
@@ -480,9 +472,10 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
               <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
             </div>
 
-            <div className="p-8 overflow-y-auto flex-1 space-y-8">
+            {/* CORPO DO MODAL - VISÍVEL E COM SCROLL LIBERADO NA IMPRESSÃO */}
+            <div className="p-8 overflow-y-auto flex-1 space-y-8 print:p-0 print:overflow-visible">
               
-              <div id="ordem-compra-print" className="bg-white text-black font-sans">
+              <div id="ordem-compra-print" className="bg-white text-black font-sans w-full">
                 
                 {/* LOOP PELAS ORDENS SELECIONADAS */}
                 {ordensParaImprimir.map((ordem, index) => (
@@ -556,6 +549,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: Fornec
 
             </div>
 
+            {/* RODAPÉ DO MODAL - OCULTO NA IMPRESSÃO */}
             <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto no-print">
               <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Voltar</button>
               <button onClick={() => window.print()} className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all transform hover:scale-105">
