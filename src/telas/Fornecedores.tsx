@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
@@ -207,19 +208,32 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       
-      {/* CSS DE IMPRESSÃO - REESCRITO PARA FLUXO NATURAL (SEM CORTES) */}
+      {/* CSS DE IMPRESSÃO - PROFISSIONAL E ISOLADO */}
       <style dangerouslySetInnerHTML={{__html: `
+        @media screen {
+          .print-portal { display: none !important; }
+        }
         @media print {
+          /* Desliga o sistema principal da tela inteira */
+          #root { display: none !important; }
+          body { 
+            background: white !important; 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+          }
+          /* Exibe apenas o portal gerado para impressão */
+          .print-portal { 
+            display: block !important; 
+            width: 100% !important; 
+            color: black !important;
+          }
           @page { margin: 10mm; size: auto; }
-          body { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          /* Oculta tudo que tem a classe no-print */
-          .no-print { display: none !important; }
-          /* Garante que o scroll do navegador não limite o tamanho da folha A4 */
-          html, body, #root { height: auto !important; overflow: visible !important; }
         }
       `}} />
 
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
+      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div>
           <h2 className="text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
             <span>🚚</span> Compras & Entradas
@@ -229,7 +243,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
       </header>
 
       {/* ABAS */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px no-print">
+      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px">
         <button onClick={() => setAbaAtiva('gerar')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'gerar' ? 'bg-slate-900 text-white border-t-2 border-slate-900 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
           <span>🛒</span> 1. Gerar Ordem
         </button>
@@ -243,7 +257,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
 
       {/* ABA 1: GERAR ORDEM */}
       {abaAtiva === 'gerar' && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in no-print">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in">
           <div className="xl:col-span-5 bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
             <h3 className="font-black text-xl text-slate-800 tracking-tight mb-6 border-b border-slate-100 pb-4">Nova Ordem de Compra</h3>
             <div className="space-y-5">
@@ -298,7 +312,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
 
       {/* ABA 2: RECEBER MERCADORIA */}
       {abaAtiva === 'receber' && (
-        <div className="animate-fade-in space-y-10 no-print">
+        <div className="animate-fade-in space-y-10">
           {comprasSemFatura.length > 0 && (
             <div className="bg-rose-950 border border-rose-500/50 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl animate-pulse">
               <div><h3 className="text-rose-400 font-black text-lg flex items-center gap-2"><span>🚨</span> Alerta de Auditoria</h3><p className="text-rose-200/70 font-medium text-sm mt-1">Existem ordens recebidas que não geraram lançamento financeiro automático. Clique ao lado para regularizar.</p></div>
@@ -352,7 +366,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
 
       {/* ABA 3: CRUD LISTA FORNECEDORES */}
       {abaAtiva === 'lista' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-fade-in no-print">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-fade-in">
           <div className="xl:col-span-1">
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 sticky top-24">
               <h3 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-3">{idFornecedorEdicao ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
@@ -379,7 +393,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
       )}
 
       {/* HISTÓRICO COMPLETO COM OPÇÃO DE IMPRESSÃO EM LOTE */}
-      <div className="mt-12 no-print">
+      <div className="mt-12">
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <span className="text-2xl">📋</span>
@@ -465,111 +479,142 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       </div>
 
-      {/* MODAL MESTRE DE IMPRESSÃO EM LOTE - ATUALIZADO PARA FLUXO NATURAL NO PRINT */}
-      {ordensParaImprimir && ordensParaImprimir.length > 0 && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in print:static print:bg-white print:p-0 print:block">
-          
-          <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh] print:max-h-none print:shadow-none print:border-none print:rounded-none print:block">
-            
-            {/* CABEÇALHO DO MODAL - OCULTO NA IMPRESSÃO */}
-            <div className="bg-slate-900 p-6 text-white flex justify-between items-center no-print">
-              <div>
-                <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
-                <h3 className="text-2xl font-black">
-                  {ordensParaImprimir.length > 1 ? `Lote de Impressão (${ordensParaImprimir.length} Ordens)` : ordensParaImprimir[0].codigoOrdem}
-                </h3>
+      {/* MOTOR DE IMPRESSÃO PROFISSIONAL (PORTAL RENDERIZADO DIRETAMENTE NO BODY) */}
+      {ordensParaImprimir && ordensParaImprimir.length > 0 && createPortal(
+        <>
+          {/* A VISÃO DE TELA (MODAL) QUE O USUÁRIO VÊ ANTES DE IMPRIMIR */}
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex justify-center items-center p-4 animate-fade-in print:hidden">
+            <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+              <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
+                <div>
+                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
+                  <h3 className="text-2xl font-black">
+                    {ordensParaImprimir.length > 1 ? `Lote de Impressão (${ordensParaImprimir.length} Ordens)` : ordensParaImprimir[0].codigoOrdem}
+                  </h3>
+                </div>
+                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
               </div>
-              <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
-            </div>
 
-            {/* CORPO DO MODAL - SCROLL LIBERADO E VISÍVEL NA IMPRESSÃO */}
-            <div className="p-8 overflow-y-auto flex-1 space-y-8 print:p-0 print:overflow-visible print:block">
-              
-              <div id="ordem-compra-print" className="bg-white text-black font-sans w-full print:block">
-                
-                {/* LOOP PELAS ORDENS SELECIONADAS */}
-                {ordensParaImprimir.map((ordem, index) => (
-                  <div key={ordem.id} className={`break-inside-avoid print:break-inside-avoid ${index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-300 pb-12 mb-12 print:border-black print:pb-8 print:mb-8' : ''}`}>
-                    
-                    <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
-                      <div>
-                        <h1 className="text-3xl font-black tracking-tight uppercase">Ordem de Compra / Mercadoria</h1>
-                        <p className="text-xs font-bold text-slate-500 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
-                        <div className="mt-4 space-y-1 font-mono text-xs">
-                          <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
-                          <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
-                          <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
-                          {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
+              {/* CONTEÚDO SCROLLÁVEL NA TELA */}
+              <div className="p-8 overflow-y-auto flex-1 bg-slate-100">
+                <div className="bg-white p-8 shadow-sm border border-slate-200 rounded-xl">
+                  <p className="text-center font-bold text-slate-500 mb-6 text-sm">Preview do Layout de Impressão</p>
+                  {ordensParaImprimir.map((ordem, index) => (
+                    <div key={`preview-${ordem.id}`} className={index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-300 pb-12 mb-12' : ''}>
+                      <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
+                        <div>
+                          <h1 className="text-2xl font-black tracking-tight uppercase text-black">Ordem de Compra / Mercadoria</h1>
+                          <p className="text-xs font-bold text-slate-500 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
+                          <div className="mt-4 space-y-1 font-mono text-xs text-black">
+                            <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
+                            <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
+                            <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
+                            {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
+                          </div>
                         </div>
                       </div>
-                      
-                      <div className="text-center space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200 print:bg-white print:border-black">
-                        <div>
-                          <img 
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordem.codigoOrdem}`} 
-                            alt="QR Code da Ordem" 
-                            className="w-24 h-24 mx-auto border-2 border-white shadow-sm print:shadow-none print:border-black"
-                          />
-                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider mt-1 print:text-black">QR Rastreio</p>
-                        </div>
-                        <div>
-                          <img 
-                            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${ordem.codigoOrdem}&scale=2&rotate=N&includetext`} 
-                            alt="Código de Barras da Ordem" 
-                            className="h-10 object-contain mx-auto"
-                          />
-                        </div>
+                      <table className="w-full text-left text-xs border-collapse mb-8 text-black">
+                        <thead>
+                          <tr className="border-b-2 border-black bg-slate-100 font-black uppercase text-[10px] tracking-wider">
+                            <th className="p-3">Insumo / Descrição</th>
+                            <th className="p-3 text-center">Qtd</th>
+                            <th className="p-3 text-right">Custo Un.</th>
+                            <th className="p-3 text-right">Subtotal</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-300 font-bold">
+                          {ordem.itens.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="p-3">{item.nome}</td>
+                              <td className="p-3 text-center font-mono">{item.quantidade} UN</td>
+                              <td className="p-3 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
+                              <td className="p-3 text-right font-mono">R$ {item.subtotal.toFixed(2)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      <div className="border-t-2 border-black pt-4 flex justify-between items-center text-black">
+                        <div className="text-xs font-medium"><p>Status: {ordem.statusChegada.toUpperCase()}</p></div>
+                        <div className="text-right"><p className="text-[10px] font-black uppercase tracking-widest mb-1">Total Consolidado</p><p className="text-2xl font-black font-mono tracking-tight">R$ {ordem.valorTotal.toFixed(2)}</p></div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
 
-                    <table className="w-full text-left text-xs border-collapse mb-8">
-                      <thead>
-                        <tr className="border-b-2 border-black bg-slate-100 print:bg-white font-black uppercase text-[10px] tracking-wider">
-                          <th className="p-3">Insumo / Descrição do Produto</th>
-                          <th className="p-3 text-center">Quantidade</th>
-                          <th className="p-3 text-right">Custo Unitário</th>
-                          <th className="p-3 text-right">Subtotal Líquido</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-300 print:divide-black font-bold text-slate-800 print:text-black">
-                        {ordem.itens.map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="p-3">{item.nome}</td>
-                            <td className="p-3 text-center font-mono">{item.quantidade} UN</td>
-                            <td className="p-3 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
-                            <td className="p-3 text-right font-mono text-black">R$ {item.subtotal.toFixed(2)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+              <div className="bg-white p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto">
+                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Cancelar</button>
+                <button onClick={() => window.print()} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:scale-105">
+                  🖨️ Iniciar Impressão A4
+                </button>
+              </div>
+            </div>
+          </div>
 
-                    <div className="border-t-2 border-black pt-4 flex justify-between items-center">
-                      <div className="text-xs font-medium text-slate-500 print:text-black">
-                        <p>Status da Remessa: {ordem.statusChegada.toUpperCase()}</p>
-                        <p className="mt-1">Autenticação: {ordem.id}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-black text-slate-400 print:text-black uppercase tracking-widest mb-1">Custo Total Consolidado</p>
-                        <p className="text-3xl font-black font-mono tracking-tight print:text-black">R$ {ordem.valorTotal.toFixed(2)}</p>
-                      </div>
+          {/* O DOCUMENTO REAL QUE VAI PARA A IMPRESSORA (INVISÍVEL NA TELA, VISÍVEL NO PAPEL) */}
+          <div className="print-portal bg-white text-black font-sans p-8 w-full">
+            {ordensParaImprimir.map((ordem, index) => (
+              <div key={`print-${ordem.id}`} style={{ pageBreakInside: 'avoid' }} className={index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-400 pb-12 mb-12' : ''}>
+                
+                <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
+                  <div>
+                    <h1 className="text-3xl font-black tracking-tight uppercase">Ordem de Compra / Mercadoria</h1>
+                    <p className="text-xs font-bold text-slate-600 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
+                    <div className="mt-4 space-y-1 font-mono text-xs text-black">
+                      <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
+                      <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
+                      <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
+                      {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
                     </div>
                   </div>
-                ))}
-                
+                  
+                  <div className="text-center space-y-4">
+                    <div>
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordem.codigoOrdem}`} alt="QR Code da Ordem" className="w-24 h-24 mx-auto border-2 border-black" />
+                      <p className="text-[8px] font-black text-black uppercase tracking-wider mt-1">QR Rastreio</p>
+                    </div>
+                    <div>
+                      <img src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${ordem.codigoOrdem}&scale=2&rotate=N&includetext`} alt="Código de Barras da Ordem" className="h-10 object-contain mx-auto" />
+                    </div>
+                  </div>
+                </div>
+
+                <table className="w-full text-left text-xs border-collapse mb-8 text-black">
+                  <thead>
+                    <tr className="border-b-2 border-black font-black uppercase text-[10px] tracking-wider">
+                      <th className="p-2">Insumo / Descrição do Produto</th>
+                      <th className="p-2 text-center">Quantidade</th>
+                      <th className="p-2 text-right">Custo Unitário</th>
+                      <th className="p-2 text-right">Subtotal Líquido</th>
+                    </tr>
+                  </thead>
+                  <tbody className="font-bold">
+                    {ordem.itens.map((item, idx) => (
+                      <tr key={idx} className="border-b border-slate-300">
+                        <td className="p-2">{item.nome}</td>
+                        <td className="p-2 text-center font-mono">{item.quantidade} UN</td>
+                        <td className="p-2 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
+                        <td className="p-2 text-right font-mono text-black">R$ {item.subtotal.toFixed(2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <div className="border-t-2 border-black pt-4 flex justify-between items-center text-black">
+                  <div className="text-xs font-medium">
+                    <p>Status da Remessa: {ordem.statusChegada.toUpperCase()}</p>
+                    <p className="mt-1">Autenticação: {ordem.id}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black uppercase tracking-widest mb-1">Custo Total Consolidado</p>
+                    <p className="text-3xl font-black font-mono tracking-tight">R$ {ordem.valorTotal.toFixed(2)}</p>
+                  </div>
+                </div>
               </div>
-
-            </div>
-
-            {/* RODAPÉ DO MODAL - OCULTO NA IMPRESSÃO */}
-            <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto no-print">
-              <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Voltar</button>
-              <button onClick={() => window.print()} className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all transform hover:scale-105">
-                🖨️ Imprimir {ordensParaImprimir.length > 1 ? 'Lote A4' : 'A4'}
-              </button>
-            </div>
-
+            ))}
           </div>
-        </div>
+        </>,
+        document.body
       )}
 
     </div>
