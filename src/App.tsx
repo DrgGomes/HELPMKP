@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { collection, onSnapshot } from 'firebase/firestore';
-import type { Produto, Plataforma, CustoPadrao, Categoria, CategoriaDespesa, Fornecedor, LancamentoFinanceiro, Compra } from './types';
+import type { Produto, Plataforma, CustoPadrao, Categoria, CategoriaDespesa, Fornecedor, LancamentoFinanceiro, Compra, Midia } from './types';
 import Login from './telas/Login';
 import Dashboard from './telas/Dashboard';
 import Configuracoes from './telas/Configuracoes';
@@ -14,6 +14,7 @@ import Fornecedores from './telas/Fornecedores';
 import Financeiro from './telas/Financeiro';
 import CalculadoraRapida from './telas/CalculadoraRapida';
 import BackupManager from './telas/BackupManager';
+import GaleriaMidia from './telas/GaleriaMidia'; // IMPORT DA NOVA TELA
 
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
@@ -30,11 +31,12 @@ export default function App() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [lancamentos, setLancamentos] = useState<LancamentoFinanceiro[]>([]);
   const [compras, setCompras] = useState<Compra[]>([]);
+  const [midias, setMidias] = useState<Midia[]>([]); // ESTADO DA GALERIA
 
   useEffect(() => {
     let unsubPlat: () => void = () => {}; let unsubProd: () => void = () => {}; let unsubCustos: () => void = () => {};
     let unsubCat: () => void = () => {}; let unsubCatDesp: () => void = () => {}; let unsubForn: () => void = () => {}; 
-    let unsubLanc: () => void = () => {}; let unsubComp: () => void = () => {};
+    let unsubLanc: () => void = () => {}; let unsubComp: () => void = () => {}; let unsubMidias: () => void = () => {};
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -47,15 +49,16 @@ export default function App() {
         unsubForn = onSnapshot(collection(db, 'usuarios', user.uid, 'fornecedores'), (snapshot) => { setFornecedores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Fornecedor))); });
         unsubLanc = onSnapshot(collection(db, 'usuarios', user.uid, 'lancamentos'), (snapshot) => { setLancamentos(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as LancamentoFinanceiro))); });
         unsubComp = onSnapshot(collection(db, 'usuarios', user.uid, 'compras'), (snapshot) => { setCompras(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Compra))); });
+        unsubMidias = onSnapshot(collection(db, 'usuarios', user.uid, 'midias'), (snapshot) => { setMidias(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Midia))); });
       } else {
         setIsLogado(false); setEmailUsuario('');
-        setPlataformas([]); setProdutos([]); setCustosPadrao([]); setCategorias([]); setCategoriasDespesa([]); setFornecedores([]); setLancamentos([]); setCompras([]);
-        unsubPlat(); unsubProd(); unsubCustos(); unsubCat(); unsubCatDesp(); unsubForn(); unsubLanc(); unsubComp();
+        setPlataformas([]); setProdutos([]); setCustosPadrao([]); setCategorias([]); setCategoriasDespesa([]); setFornecedores([]); setLancamentos([]); setCompras([]); setMidias([]);
+        unsubPlat(); unsubProd(); unsubCustos(); unsubCat(); unsubCatDesp(); unsubForn(); unsubLanc(); unsubComp(); unsubMidias();
       }
       setCarregandoAuth(false);
     });
 
-    return () => { unsubscribeAuth(); unsubPlat(); unsubProd(); unsubCustos(); unsubCat(); unsubCatDesp(); unsubForn(); unsubLanc(); unsubComp(); };
+    return () => { unsubscribeAuth(); unsubPlat(); unsubProd(); unsubCustos(); unsubCat(); unsubCatDesp(); unsubForn(); unsubLanc(); unsubComp(); unsubMidias(); };
   }, []);
 
   const lidarSair = async () => { if (window.confirm("Deseja desconectar da sua sessão segura?")) await signOut(auth); };
@@ -77,7 +80,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] flex font-sans text-slate-800 antialiased overflow-hidden selection:bg-blue-500/30">
       
-      {/* SIDEBAR ULTRA PREMIUM (DESKTOP E MENU GAVETA NO MOBILE) */}
+      {/* SIDEBAR ULTRA PREMIUM */}
       <div className={`fixed inset-y-0 left-0 z-[110] w-72 bg-slate-950 text-white flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${menuAberto ? 'translate-x-0 shadow-[20px_0_50px_rgba(0,0,0,0.5)]' : '-translate-x-full'} border-r border-white/5`}>
         <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none"></div>
 
@@ -103,16 +106,26 @@ export default function App() {
           </div>
           
           <div className="space-y-1">
-            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Inteligência & Vendas</p>
+            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Inteligência & Mídia</p>
             <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'calculadora' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <div className="flex items-center gap-3"><span className="text-lg group-hover:scale-110 transition-transform">🧮</span><span>Calculadora IA</span></div>
-              <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-black tracking-wider">Novo</span>
             </button>
+            <button onClick={() => { setTelaAtiva('galeria'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'galeria' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <div className="flex items-center gap-3"><span className="text-lg group-hover:scale-110 transition-transform">📸</span><span>Galeria de Fotos</span></div>
+              <span className="text-[8px] bg-indigo-600 text-white px-1.5 py-0.5 rounded uppercase font-black tracking-wider">Novo</span>
+            </button>
+          </div>
+
+          <div className="space-y-1">
+            <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Estoque & Compras</p>
             <button onClick={() => { setTelaAtiva('produto_cadastro'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'produto_cadastro' ? 'bg-white/10 text-white border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <span className="text-lg group-hover:scale-110 transition-transform">✨</span><span>Criar Produto</span>
             </button>
             <button onClick={() => { setTelaAtiva('produtos_lista'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'produtos_lista' ? 'bg-white/10 text-white border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <span className="text-lg group-hover:scale-110 transition-transform">📦</span><span>Meu Estoque</span>
+            </button>
+            <button onClick={() => { setTelaAtiva('fornecedores'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'fornecedores' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">🏭</span><span>Fornecedores & Cargas</span>
             </button>
           </div>
 
@@ -121,9 +134,6 @@ export default function App() {
             <button onClick={() => { setTelaAtiva('financeiro'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'financeiro' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <div className="flex items-center gap-3"><span className="text-lg group-hover:scale-110 transition-transform">💸</span><span>Fluxo de Caixa</span></div>
               {faturasAtrasadas > 0 && <span className="w-5 h-5 flex items-center justify-center bg-rose-500 text-white text-[10px] font-black rounded-full animate-pulse">{faturasAtrasadas}</span>}
-            </button>
-            <button onClick={() => { setTelaAtiva('fornecedores'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'fornecedores' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-              <span className="text-lg group-hover:scale-110 transition-transform">🏭</span><span>Fornecedores</span>
             </button>
           </div>
           
@@ -154,13 +164,9 @@ export default function App() {
         </div>
       </div>
 
-      {/* ÁREA PRINCIPAL COM TOPBAR 5.0 */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-        
-        {/* Overlay do Menu Mobile */}
         {menuAberto && <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] md:hidden" onClick={() => setMenuAberto(false)}></div>}
 
-        {/* TopBar Flutuante */}
         <header className="h-16 sm:h-20 px-4 sm:px-6 lg:px-10 flex items-center justify-between z-30 bg-white/70 backdrop-blur-xl border-b border-slate-200/50 sticky top-0">
           <div className="flex items-center gap-4">
             <div>
@@ -168,35 +174,30 @@ export default function App() {
               <h2 className="text-base sm:text-lg font-black text-slate-800 leading-tight">Fábrica & E-commerce</h2>
             </div>
           </div>
-
           <div className="flex items-center gap-2 sm:gap-4">
             <div className="hidden md:flex bg-white px-4 py-2 rounded-full shadow-sm border border-slate-200 items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
               <span className="text-xs font-bold text-slate-600">Sincronizado</span>
             </div>
             <button onClick={() => setTelaAtiva('financeiro')} className="relative w-9 h-9 sm:w-10 sm:h-10 bg-white rounded-full shadow-sm border border-slate-200 flex items-center justify-center text-slate-600 hover:text-blue-600 transition-colors">
-              🔔
-              {faturasAtrasadas > 0 && <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 border-2 border-white rounded-full"></span>}
+              🔔{faturasAtrasadas > 0 && <span className="absolute top-0 right-0 w-3 h-3 bg-rose-500 border-2 border-white rounded-full"></span>}
             </button>
-            <button onClick={lidarSair} className="hidden sm:flex w-10 h-10 bg-rose-50 text-rose-600 rounded-full items-center justify-center font-bold hover:bg-rose-500 hover:text-white transition-colors" title="Desconectar">
+            <button onClick={lidarSair} className="hidden sm:flex w-10 h-10 bg-rose-50 text-rose-600 rounded-full items-center justify-center font-bold hover:bg-rose-500 hover:text-white transition-colors">
               🚪
             </button>
           </div>
         </header>
 
-        {/* TASKBAR NATIVA MOBILE (BOTTOM NAVIGATION) */}
+        {/* TASKBAR NATIVA MOBILE */}
         <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200 z-50 flex items-end justify-around px-2 pb-6 pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.08)]">
           <button onClick={() => setTelaAtiva('dashboard')} className={`flex flex-col items-center gap-1 p-2 transition-all ${telaAtiva === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}`}>
-            <span className={`text-xl ${telaAtiva === 'dashboard' ? 'scale-110 drop-shadow-sm' : ''}`}>📊</span>
-            <span className="text-[9px] font-black tracking-widest uppercase">Início</span>
+            <span className={`text-xl ${telaAtiva === 'dashboard' ? 'scale-110 drop-shadow-sm' : ''}`}>📊</span><span className="text-[9px] font-black tracking-widest uppercase">Início</span>
           </button>
           
-          <button onClick={() => setTelaAtiva('produtos_lista')} className={`flex flex-col items-center gap-1 p-2 transition-all ${telaAtiva === 'produtos_lista' ? 'text-indigo-600' : 'text-slate-400'}`}>
-            <span className={`text-xl ${telaAtiva === 'produtos_lista' ? 'scale-110 drop-shadow-sm' : ''}`}>📦</span>
-            <span className="text-[9px] font-black tracking-widest uppercase">Estoque</span>
+          <button onClick={() => setTelaAtiva('galeria')} className={`flex flex-col items-center gap-1 p-2 transition-all ${telaAtiva === 'galeria' ? 'text-indigo-600' : 'text-slate-400'}`}>
+            <span className={`text-xl ${telaAtiva === 'galeria' ? 'scale-110 drop-shadow-sm' : ''}`}>📸</span><span className="text-[9px] font-black tracking-widest uppercase">Mídias</span>
           </button>
           
-          {/* Botão Central Flutuante (Cargas/Fornecedores) */}
           <button onClick={() => setTelaAtiva('fornecedores')} className="relative -top-6 flex flex-col items-center gap-1 group">
             <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-xl transition-transform ${telaAtiva === 'fornecedores' ? 'bg-indigo-600 shadow-indigo-600/40 scale-105' : 'bg-slate-800 text-white'}`}>
               <span className="text-2xl">🚚</span>
@@ -205,18 +206,15 @@ export default function App() {
           </button>
 
           <button onClick={() => setTelaAtiva('financeiro')} className={`relative flex flex-col items-center gap-1 p-2 transition-all ${telaAtiva === 'financeiro' ? 'text-emerald-500' : 'text-slate-400'}`}>
-            <span className={`text-xl ${telaAtiva === 'financeiro' ? 'scale-110 drop-shadow-sm' : ''}`}>💸</span>
-            <span className="text-[9px] font-black tracking-widest uppercase">Caixa</span>
+            <span className={`text-xl ${telaAtiva === 'financeiro' ? 'scale-110 drop-shadow-sm' : ''}`}>💸</span><span className="text-[9px] font-black tracking-widest uppercase">Caixa</span>
             {faturasAtrasadas > 0 && <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full border border-white"></span>}
           </button>
 
           <button onClick={() => setMenuAberto(true)} className="flex flex-col items-center gap-1 p-2 transition-all text-slate-400 hover:text-slate-600">
-            <span className="text-xl">☰</span>
-            <span className="text-[9px] font-black tracking-widest uppercase">Menu</span>
+            <span className="text-xl">☰</span><span className="text-[9px] font-black tracking-widest uppercase">Menu</span>
           </button>
         </div>
 
-        {/* CONTAINER DA TELA: Adicionado espaçamento extra no mobile (pb-28) para não esconder conteúdo sob a Taskbar */}
         <main className="flex-1 overflow-x-hidden overflow-y-auto bg-[#f4f7fb] pb-28 md:pb-0">
           <div className="max-w-[1600px] mx-auto w-full p-4 sm:p-6 md:p-8 lg:p-10">
             {telaAtiva === 'dashboard' && <Dashboard produtos={produtos} plataformas={plataformas} lancamentos={lancamentos} categoriasDespesa={categoriasDespesa} setTelaAtiva={setTelaAtiva} />}
@@ -229,6 +227,9 @@ export default function App() {
             {telaAtiva === 'perfil' && <Perfil />}
             {telaAtiva === 'backups' && <BackupManager produtos={produtos} compras={compras} lancamentos={lancamentos} custosPadrao={custosPadrao} />}
             {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
+            
+            {/* INJEÇÃO DA TELA DE GALERIA AQUI */}
+            {telaAtiva === 'galeria' && <GaleriaMidia midias={midias} />}
           </div>
         </main>
       </div>

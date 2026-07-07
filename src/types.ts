@@ -78,7 +78,7 @@ export interface Compra {
   itens: ItemCompra[]; 
   valorTotal: number; 
   statusPagamento: 'pago' | 'pendente'; 
-  faturaGerada?: boolean; // AQUI ESTÁ A CORREÇÃO QUE A VERCEL PEDIU!
+  faturaGerada?: boolean; 
 }
 
 export interface LancamentoFinanceiro { 
@@ -94,4 +94,13 @@ export interface LancamentoFinanceiro {
   compraId?: string;     
   recorrente?: boolean; 
   grupoRecorrenciaId?: string; 
+}
+
+// --- NOVA ESTRUTURA PARA A GALERIA DE MÍDIAS ---
+export interface Midia {
+  id: string;
+  titulo: string;
+  url: string;
+  album: string;
+  dataCriacao: string;
 }
