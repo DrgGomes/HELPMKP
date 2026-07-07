@@ -3,7 +3,13 @@ import { collection, addDoc, doc, updateDoc, deleteDoc, writeBatch } from 'fireb
 import { db, auth } from '../firebase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
 
-export default function Fornecedores({ fornecedores, produtos, compras }: { fornecedores: Fornecedor[], produtos: Produto[], compras: Compra[] }) {
+interface FornecedoresProps {
+  fornecedores: Fornecedor[];
+  produtos: Produto[];
+  compras: Compra[];
+}
+
+export default function Fornecedores({ fornecedores, produtos, compras }: FornecedoresProps) {
   const [abaAtiva, setAbaAtiva] = useState<'gerar' | 'receber' | 'lista'>('receber');
 
   // --- ESTADOS PARA ABA: GERAR ORDEM ---
@@ -27,8 +33,9 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
   const [contatoForn, setContatoForn] = useState('');
   const [categoriaForn, setCategoriaForn] = useState('');
 
-  // --- ESTADO DO MODAL DE IMPRESSÃO ---
-  const [ordemParaImprimir, setOrdemParaImprimir] = useState<Compra | null>(null);
+  // --- ESTADOS DO MOTOR DE IMPRESSÃO EM LOTE ---
+  const [ordensParaImprimir, setOrdensParaImprimir] = useState<Compra[] | null>(null);
+  const [selecionadosImpressao, setSelecionadosImpressao] = useState<string[]>([]);
 
   // LÓGICA: GERAR ORDEM DE COMPRA
   const adicionarAoCarrinho = () => {
@@ -206,7 +213,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       
-      {/* CSS DE IMPRESSÃO - CORRIGIDO E ISOLADO */}
+      {/* CSS DE IMPRESSÃO OTIMIZADO PARA LOTE CONTÍNUO */}
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #ordem-compra-print, #ordem-compra-print * { visibility: visible !important; } #ordem-compra-print { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 0px !important; } .no-print { display: none !important; } }`}} />
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
@@ -327,7 +334,8 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
                       <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                         <span className="text-xl font-black font-mono tracking-tight">R$ {compra.valorTotal.toFixed(2)}</span>
                         <div className="flex gap-2">
-                          <button onClick={() => setOrdemParaImprimir(compra)} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm transition-colors" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
+                          {/* CHAMA O MODAL DE IMPRESSÃO COMO ARRAY PARA MANTER O PADRÃO */}
+                          <button onClick={() => setOrdensParaImprimir([compra])} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm transition-colors" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
                           <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50">Receber</button>
                         </div>
                       </div>
@@ -368,14 +376,45 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       )}
 
-      {/* HISTÓRICO COMPLETO DE ORDENS DE COMPRA */}
+      {/* HISTÓRICO COMPLETO COM OPÇÃO DE IMPRESSÃO EM LOTE */}
       <div className="mt-12 no-print">
-        <div className="flex items-center gap-3 mb-6"><span className="text-2xl">📋</span><h3 className="text-xl font-black text-slate-800">Histórico de Ordens / Arquivo Log</h3></div>
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">📋</span>
+            <h3 className="text-xl font-black text-slate-800">Histórico de Ordens / Arquivo Log</h3>
+          </div>
+          
+          {/* BOTÃO MÁGICO DE IMPRESSÃO EM MASSA */}
+          {selecionadosImpressao.length > 0 && (
+            <button 
+              onClick={() => {
+                const ordensFiltradas = compras.filter(c => selecionadosImpressao.includes(c.id));
+                setOrdensParaImprimir(ordensFiltradas);
+              }} 
+              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md transition-colors flex items-center gap-2 animate-fade-in"
+            >
+              <span>🖨️</span> Imprimir {selecionadosImpressao.length} Ordens
+            </button>
+          )}
+        </div>
+
         <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-900 text-white font-black uppercase tracking-widest text-[9px] border-b border-slate-800">
+                  <th className="p-4 w-12 text-center">
+                    {/* CHECKBOX SELECIONAR TODOS */}
+                    <input 
+                      type="checkbox"
+                      checked={selecionadosImpressao.length === compras.length && compras.length > 0}
+                      onChange={() => {
+                        if (selecionadosImpressao.length === compras.length) setSelecionadosImpressao([]);
+                        else setSelecionadosImpressao(compras.map(c => c.id));
+                      }}
+                      className="accent-indigo-500 w-4 h-4 rounded cursor-pointer"
+                    />
+                  </th>
                   <th className="p-4">Código Ordem</th>
                   <th className="p-4">Fornecedor</th>
                   <th className="p-4">Emissão</th>
@@ -388,7 +427,22 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
               </thead>
               <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
                 {compras.map(c => (
-                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
+                  <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${selecionadosImpressao.includes(c.id) ? 'bg-indigo-50/30' : ''}`}>
+                    <td className="p-4 text-center">
+                      {/* CHECKBOX INDIVIDUAL */}
+                      <input 
+                        type="checkbox"
+                        checked={selecionadosImpressao.includes(c.id)}
+                        onChange={() => {
+                          if (selecionadosImpressao.includes(c.id)) {
+                            setSelecionadosImpressao(selecionadosImpressao.filter(id => id !== c.id));
+                          } else {
+                            setSelecionadosImpressao([...selecionadosImpressao, c.id]);
+                          }
+                        }}
+                        className="accent-indigo-600 w-4 h-4 rounded cursor-pointer"
+                      />
+                    </td>
                     <td className="p-4 font-mono font-black text-slate-900">{c.codigoOrdem}</td>
                     <td className="p-4 font-black">{c.fornecedorNome}</td>
                     <td className="p-4 font-mono">{c.dataCompra.split('-').reverse().join('/')}</td>
@@ -401,7 +455,7 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
                     </td>
                     <td className="p-4 font-mono text-right font-black text-slate-900">R$ {c.valorTotal.toFixed(2)}</td>
                     <td className="p-4 text-center">
-                      <button onClick={() => setOrdemParaImprimir(c)} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg border border-slate-200 transition-colors text-[10px] font-black uppercase tracking-widest shadow-sm">🖨️ Ficha</button>
+                      <button onClick={() => setOrdensParaImprimir([c])} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg border border-slate-200 transition-colors text-[10px] font-black uppercase tracking-widest shadow-sm">🖨️ Ficha</button>
                     </td>
                   </tr>
                 ))}
@@ -411,92 +465,101 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       </div>
 
-      {/* MODAL / ESPELHO DE IMPRESSÃO DA ORDEM DE COMPRA */}
-      {ordemParaImprimir && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in">
+      {/* MODAL MESTRE DE IMPRESSÃO EM LOTE (A CLASSE no-print ESTÁ NA CAIXA PAI) */}
+      {ordensParaImprimir && ordensParaImprimir.length > 0 && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex justify-center items-center p-4 animate-fade-in no-print">
           <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
             
             <div className="bg-slate-900 p-6 text-white flex justify-between items-center no-print">
               <div>
                 <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
-                <h3 className="text-2xl font-black">{ordemParaImprimir.codigoOrdem}</h3>
+                <h3 className="text-2xl font-black">
+                  {ordensParaImprimir.length > 1 ? `Lote de Impressão (${ordensParaImprimir.length} Ordens)` : ordensParaImprimir[0].codigoOrdem}
+                </h3>
               </div>
-              <button onClick={() => setOrdemParaImprimir(null)} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
+              <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
             </div>
 
             <div className="p-8 overflow-y-auto flex-1 space-y-8">
               
-              <div id="ordem-compra-print" className="bg-white text-black p-2 font-sans">
-                <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
-                  <div>
-                    <h1 className="text-3xl font-black tracking-tight uppercase">Ordem de Compra / Mercadoria</h1>
-                    <p className="text-xs font-bold text-slate-500 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
-                    <div className="mt-4 space-y-1 font-mono text-xs">
-                      <p><strong>FORNECEDOR:</strong> {ordemParaImprimir.fornecedorNome}</p>
-                      <p><strong>EMISSÃO:</strong> {ordemParaImprimir.dataCompra.split('-').reverse().join('/')}</p>
-                      <p><strong>VENCIMENTO:</strong> {ordemParaImprimir.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
-                      {ordemParaImprimir.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordemParaImprimir.numeroVale}</p>}
+              <div id="ordem-compra-print" className="bg-white text-black font-sans">
+                
+                {/* LOOP PELAS ORDENS SELECIONADAS */}
+                {ordensParaImprimir.map((ordem, index) => (
+                  <div key={ordem.id} className={`break-inside-avoid ${index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-300 pb-12 mb-12' : ''}`}>
+                    <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
+                      <div>
+                        <h1 className="text-3xl font-black tracking-tight uppercase">Ordem de Compra / Mercadoria</h1>
+                        <p className="text-xs font-bold text-slate-500 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
+                        <div className="mt-4 space-y-1 font-mono text-xs">
+                          <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
+                          <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
+                          <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
+                          {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
+                        </div>
+                      </div>
+                      
+                      <div className="text-center space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                        <div>
+                          <img 
+                            src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordem.codigoOrdem}`} 
+                            alt="QR Code da Ordem" 
+                            className="w-24 h-24 mx-auto border-2 border-white shadow-sm"
+                          />
+                          <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider mt-1">QR Rastreio</p>
+                        </div>
+                        <div>
+                          <img 
+                            src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${ordem.codigoOrdem}&scale=2&rotate=N&includetext`} 
+                            alt="Código de Barras da Ordem" 
+                            className="h-10 object-contain mx-auto"
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  
-                  <div className="text-center space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                    <div>
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordemParaImprimir.codigoOrdem}`} 
-                        alt="QR Code da Ordem" 
-                        className="w-24 h-24 mx-auto border-2 border-white shadow-sm"
-                      />
-                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-wider mt-1">QR Rastreio</p>
-                    </div>
-                    <div>
-                      <img 
-                        src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${ordemParaImprimir.codigoOrdem}&scale=2&rotate=N&includetext`} 
-                        alt="Código de Barras da Ordem" 
-                        className="h-10 object-contain mx-auto"
-                      />
-                    </div>
-                  </div>
-                </div>
 
-                <table className="w-full text-left text-xs border-collapse mb-8">
-                  <thead>
-                    <tr className="border-b-2 border-black bg-slate-100 font-black uppercase text-[10px] tracking-wider">
-                      <th className="p-3">Insumo / Descrição do Produto</th>
-                      <th className="p-3 text-center">Quantidade</th>
-                      <th className="p-3 text-right">Custo Unitário</th>
-                      <th className="p-3 text-right">Subtotal Líquido</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-300 font-bold text-slate-800">
-                    {ordemParaImprimir.itens.map((item, idx) => (
-                      <tr key={idx}>
-                        <td className="p-3">{item.nome}</td>
-                        <td className="p-3 text-center font-mono">{item.quantidade} UN</td>
-                        <td className="p-3 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
-                        <td className="p-3 text-right font-mono text-black">R$ {item.subtotal.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    <table className="w-full text-left text-xs border-collapse mb-8">
+                      <thead>
+                        <tr className="border-b-2 border-black bg-slate-100 font-black uppercase text-[10px] tracking-wider">
+                          <th className="p-3">Insumo / Descrição do Produto</th>
+                          <th className="p-3 text-center">Quantidade</th>
+                          <th className="p-3 text-right">Custo Unitário</th>
+                          <th className="p-3 text-right">Subtotal Líquido</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-300 font-bold text-slate-800">
+                        {ordem.itens.map((item, idx) => (
+                          <tr key={idx}>
+                            <td className="p-3">{item.nome}</td>
+                            <td className="p-3 text-center font-mono">{item.quantidade} UN</td>
+                            <td className="p-3 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
+                            <td className="p-3 text-right font-mono text-black">R$ {item.subtotal.toFixed(2)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-                <div className="border-t-2 border-black pt-4 flex justify-between items-center">
-                  <div className="text-xs font-medium text-slate-500">
-                    <p>Status da Remessa: {ordemParaImprimir.statusChegada.toUpperCase()}</p>
-                    <p className="mt-1">Autenticação: {ordemParaImprimir.id}</p>
+                    <div className="border-t-2 border-black pt-4 flex justify-between items-center">
+                      <div className="text-xs font-medium text-slate-500">
+                        <p>Status da Remessa: {ordem.statusChegada.toUpperCase()}</p>
+                        <p className="mt-1">Autenticação: {ordem.id}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Total Consolidado</p>
+                        <p className="text-3xl font-black font-mono tracking-tight">R$ {ordem.valorTotal.toFixed(2)}</p>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Custo Total Consolidado</p>
-                    <p className="text-3xl font-black font-mono tracking-tight">R$ {ordemParaImprimir.valorTotal.toFixed(2)}</p>
-                  </div>
-                </div>
+                ))}
+                
               </div>
 
             </div>
 
             <div className="bg-slate-50 p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto no-print">
-              <button onClick={() => setOrdemParaImprimir(null)} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Voltar</button>
+              <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Voltar</button>
               <button onClick={() => window.print()} className="px-8 py-3 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg transition-all transform hover:scale-105">
-                🖨️ Imprimir A4
+                🖨️ Imprimir {ordensParaImprimir.length > 1 ? 'Lote A4' : 'A4'}
               </button>
             </div>
 
