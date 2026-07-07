@@ -8,8 +8,8 @@ interface GaleriaMidiaProps {
 }
 
 export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
-  // 🚨 COLE A SUA CHAVE DO IMGBB AQUI DENTRO DAS ASPAS:
-  const IMGBB_API_KEY = '8452a49c251c1d2f8a93fe3b00e994d9'; 
+  // Chave tipada e injetada com sucesso
+  const IMGBB_API_KEY: string = '8452a49c251c1d2f8a93fe3b00e994d9';
 
   const [abaAtiva, setAbaAtiva] = useState<'galeria' | 'upload'>('galeria');
   
@@ -58,8 +58,8 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
     const userId = auth.currentUser?.uid; 
     if (!userId) return;
 
-    if (modoUpload === 'arquivo' && (!IMGBB_API_KEY || IMGBB_API_KEY === 'COLE_SUA_CHAVE_AQUI')) {
-      return alert("Atenção: Você precisa colar a sua chave do ImgBB na linha 12 do código para os uploads funcionarem sem o Firebase Storage.");
+    if (modoUpload === 'arquivo' && !IMGBB_API_KEY) {
+      return alert("Atenção: A chave da API do ImgBB não foi encontrada.");
     }
 
     setProcessando(true);
@@ -270,7 +270,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                   {processando ? (
                     <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span> Processando Lote na Nuvem...</>
                   ) : (
-                    <><span>☁️</span> Iniciar Carregamento Seguro</>
+                    <><span>☁️</span> Iniciar Carregamento de {modoUpload === 'arquivo' ? arquivos.length : 1} Mídia(s)</>
                   )}
                 </button>
               </div>
