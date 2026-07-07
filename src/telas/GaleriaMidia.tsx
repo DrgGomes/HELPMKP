@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import { collection, addDoc, doc, deleteDoc } from 'firebase/firestore';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, auth } from '../firebase';
 import type { Midia } from '../types';
 
@@ -9,6 +8,9 @@ interface GaleriaMidiaProps {
 }
 
 export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
+  // 🚨 COLE A SUA CHAVE DO IMGBB AQUI DENTRO DAS ASPAS:
+  const IMGBB_API_KEY = '8452a49c251c1d2f8a93fe3b00e994d9';
+
   const [abaAtiva, setAbaAtiva] = useState<'galeria' | 'upload'>('galeria');
   
   // --- ESTADOS DE UPLOAD MULTI-MODE ---
@@ -40,12 +42,10 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
     }).sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
   }, [midias, busca, filtroAlbum]);
 
-  // Captura múltiplos arquivos e gera múltiplos previews simultâneos
   const lidarMudancaArquivo = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const arquivosArray = Array.from(e.target.files);
       setArquivos(arquivosArray);
-      
       const linksPreviews = arquivosArray.map(file => URL.createObjectURL(file));
       setPreviewsImagem(linksPreviews);
     }
@@ -58,6 +58,10 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
     const userId = auth.currentUser?.uid; 
     if (!userId) return;
 
+    if (modoUpload === 'arquivo' && (!IMGBB_API_KEY || IMGBB_API_KEY === 'COLE_SUA_CHAVE_AQUI')) {
+      return alert("Atenção: Você precisa colar a sua chave do ImgBB na linha 12 do código para os uploads funcionarem sem o Firebase Storage.");
+    }
+
     setProcessando(true);
     
     try {
@@ -69,24 +73,32 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
           return alert("Selecione ao menos uma imagem do seu dispositivo.");
         }
 
-        const storage = getStorage(auth.app);
         let contagemSucesso = 0;
         let contagemFalha = 0;
 
-        // Processamento paralelo blindado (se um falhar, não trava os outros)
+        // Upload Paralelo via API ImgBB (Gratuito e Sem Cartão)
         await Promise.all(arquivos.map(async (arquivoIndividual, index) => {
           try {
-            const extensao = arquivoIndividual.name.split('.').pop();
-            const nomeSeguro = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}.${extensao}`;
-            const arquivoRef = ref(storage, `usuarios/${userId}/midias/${nomeSeguro}`);
-            
-            await uploadBytes(arquivoRef, arquivoIndividual);
-            const urlDownload = await getDownloadURL(arquivoRef);
+            const formData = new FormData();
+            formData.append('image', arquivoIndividual);
+
+            // Dispara para o servidor gratuito
+            const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
+              method: 'POST',
+              body: formData
+            });
+
+            const imgbbData = await imgbbResponse.json();
+
+            if (!imgbbData.success) throw new Error("Falha na API do ImgBB");
+
+            const urlDownload = imgbbData.data.url;
 
             const tituloFinal = arquivos.length > 1 && titulo 
               ? `${titulo} (${index + 1})` 
               : titulo || arquivoIndividual.name;
 
+            // Salva apenas o link no Firestore (que já funciona e é grátis)
             await addDoc(collection(db, 'usuarios', userId, 'midias'), {
               titulo: tituloFinal,
               url: urlDownload,
@@ -102,13 +114,12 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         }));
 
         if (contagemFalha > 0) {
-          alert(`Processo concluído com ressalvas:\n✅ ${contagemSucesso} salvas.\n❌ ${contagemFalha} falharam.\nVerifique se o Firebase Storage está ativado no seu painel.`);
+          alert(`Processo concluído:\n✅ ${contagemSucesso} salvas.\n❌ ${contagemFalha} falharam.`);
         } else {
-          alert(`✅ Sucesso! ${contagemSucesso} imagens carregadas na central.`);
+          alert(`✅ Sucesso! ${contagemSucesso} imagens carregadas via servidor externo.`);
         }
 
       } else {
-        // Modo URL individual
         if (!url) {
           setProcessando(false);
           return alert("Cole a URL da imagem.");
@@ -122,15 +133,13 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         alert("✅ Mídia salva com sucesso!");
       }
 
-      // Reset total do formulário e redirecionamento
       setTitulo(''); setUrl(''); setNovoAlbum(''); setArquivos([]); setPreviewsImagem([]);
       setAbaAtiva('galeria');
 
     } catch (err: any) {
       console.error("Erro crítico na esteira de upload:", err);
-      alert("Erro crítico no sistema de upload. Se persistir, ative e verifique as regras do Firebase Storage.");
+      alert("Erro crítico no sistema de upload.");
     } finally {
-      // ESTE BLOCO GARANTE QUE O 'CARREGANDO' VAI DESAPARECER MESMO SE TUDO FALHAR
       setProcessando(false);
     }
   };
@@ -173,7 +182,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
           <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
             <span>📸</span> Asset Manager
           </h2>
-          <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">Central de criativos, fotos de produtos e banners de campanhas.</p>
+          <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">Central de criativos suportada por ImgBB Cloud (100% Gratuito).</p>
         </div>
       </header>
 
@@ -261,7 +270,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                   {processando ? (
                     <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span> Processando Lote na Nuvem...</>
                   ) : (
-                    <><span>☁️</span> Iniciar Carregamento de {modoUpload === 'arquivo' ? arquivos.length : 1} Mídia(s)</>
+                    <><span>☁️</span> Iniciar Carregamento Seguro</>
                   )}
                 </button>
               </div>
