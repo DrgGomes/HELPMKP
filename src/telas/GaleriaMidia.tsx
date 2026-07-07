@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { collection, addDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import type { Midia } from '../types';
 
@@ -8,12 +8,11 @@ interface GaleriaMidiaProps {
 }
 
 export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
-  // Chave tipada e injetada com sucesso
   const IMGBB_API_KEY: string = '8452a49c251c1d2f8a93fe3b00e994d9';
 
   const [abaAtiva, setAbaAtiva] = useState<'galeria' | 'upload'>('galeria');
   
-  // --- ESTADOS DE UPLOAD MULTI-MODE ---
+  // --- ESTADOS DE UPLOAD ---
   const [modoUpload, setModoUpload] = useState<'arquivo' | 'link'>('arquivo');
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [previewsImagem, setPreviewsImagem] = useState<string[]>([]);
@@ -24,11 +23,15 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
   const [novoAlbum, setNovoAlbum] = useState('');
   const [processando, setProcessando] = useState(false);
 
-  // Estados de Filtro
+  // --- ESTADOS DA GALERIA & FILTROS ---
   const [busca, setBusca] = useState('');
   const [filtroAlbum, setFiltroAlbum] = useState('Todos');
 
-  // Extrai álbuns únicos das mídias cadastradas
+  // --- ESTADOS DO MOTOR DE LOTE (NOVO) ---
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionados, setSelecionados] = useState<string[]>([]);
+  const [processandoLote, setProcessandoLote] = useState(false);
+
   const albunsExistentes = useMemo(() => {
     const lista = midias.map(m => m.album).filter(Boolean);
     return Array.from(new Set(lista)).sort();
@@ -76,13 +79,11 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         let contagemSucesso = 0;
         let contagemFalha = 0;
 
-        // Upload Paralelo via API ImgBB (Gratuito e Sem Cartão)
         await Promise.all(arquivos.map(async (arquivoIndividual, index) => {
           try {
             const formData = new FormData();
             formData.append('image', arquivoIndividual);
 
-            // Dispara para o servidor gratuito
             const imgbbResponse = await fetch(`https://api.imgbb.com/1/upload?key=${IMGBB_API_KEY}`, {
               method: 'POST',
               body: formData
@@ -93,12 +94,8 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
             if (!imgbbData.success) throw new Error("Falha na API do ImgBB");
 
             const urlDownload = imgbbData.data.url;
+            const tituloFinal = arquivos.length > 1 && titulo ? `${titulo} (${index + 1})` : titulo || arquivoIndividual.name;
 
-            const tituloFinal = arquivos.length > 1 && titulo 
-              ? `${titulo} (${index + 1})` 
-              : titulo || arquivoIndividual.name;
-
-            // Salva apenas o link no Firestore (que já funciona e é grátis)
             await addDoc(collection(db, 'usuarios', userId, 'midias'), {
               titulo: tituloFinal,
               url: urlDownload,
@@ -113,11 +110,8 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
           }
         }));
 
-        if (contagemFalha > 0) {
-          alert(`Processo concluído:\n✅ ${contagemSucesso} salvas.\n❌ ${contagemFalha} falharam.`);
-        } else {
-          alert(`✅ Sucesso! ${contagemSucesso} imagens carregadas via servidor externo.`);
-        }
+        if (contagemFalha > 0) alert(`Processo concluído:\n✅ ${contagemSucesso} salvas.\n❌ ${contagemFalha} falharam.`);
+        else alert(`✅ Sucesso! ${contagemSucesso} imagens carregadas via servidor externo.`);
 
       } else {
         if (!url) {
@@ -174,6 +168,78 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
     }
   };
 
+  // --- FUNÇÕES DE LOTE (MÁGICA ENTERPRISE) ---
+  const selecionarTodasFiltradas = () => {
+    if (selecionados.length === midiasFiltradas.length) {
+      setSelecionados([]);
+    } else {
+      setSelecionados(midiasFiltradas.map(m => m.id));
+    }
+  };
+
+  const baixarLoteSelecionadas = async () => {
+    if (selecionados.length === 0) return;
+    
+    // Aviso importante para o navegador não barrar
+    alert(`O download de ${selecionados.length} imagens vai começar.\n\n⚠️ IMPORTANTE: Se o seu navegador perguntar se deseja "Permitir o download de múltiplos arquivos", clique em PERMITIR.`);
+    
+    setProcessandoLote(true);
+    
+    const midiasParaBaixar = midiasFiltradas.filter(m => selecionados.includes(m.id));
+
+    for (let i = 0; i < midiasParaBaixar.length; i++) {
+      const midia = midiasParaBaixar[i];
+      try {
+        const response = await fetch(midia.url);
+        const blob = await response.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `${midia.titulo.replace(/\s+/g, '_')}_${i + 1}.jpg`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(blobUrl);
+
+        // Atraso de 400ms entre as fotos para não travar o Chrome/Edge
+        await new Promise(resolve => setTimeout(resolve, 400));
+      } catch (e) {
+        console.error(`Falha ao baixar lote: ${midia.titulo}`, e);
+      }
+    }
+
+    setProcessandoLote(false);
+    setSelecionados([]);
+    setModoSelecao(false);
+    alert("✅ Lote de downloads enviado para o seu dispositivo!");
+  };
+
+  const excluirLoteSelecionadas = async () => {
+    if (selecionados.length === 0) return;
+    const userId = auth.currentUser?.uid; if (!userId) return;
+
+    if (!window.confirm(`Você está prestes a EXCLUIR DEFINITIVAMENTE ${selecionados.length} imagens do servidor.\n\nTem certeza absoluta?`)) return;
+
+    setProcessandoLote(true);
+    try {
+      const batch = writeBatch(db);
+      selecionados.forEach(id => {
+        const refDoc = doc(db, 'usuarios', userId, 'midias', id);
+        batch.delete(refDoc);
+      });
+      await batch.commit();
+      
+      alert(`🗑️ ${selecionados.length} imagens removidas com sucesso.`);
+      setSelecionados([]);
+      setModoSelecao(false);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao excluir o lote.");
+    }
+    setProcessandoLote(false);
+  };
+
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-6 sm:space-y-8 pb-32">
       
@@ -196,14 +262,12 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         </button>
       </div>
 
-      {/* ABA DE UPLOAD */}
       {abaAtiva === 'upload' && (
         <div className="bg-white p-6 sm:p-10 rounded-3xl shadow-sm border border-slate-200 max-w-5xl flex flex-col lg:flex-row gap-10 animate-fade-in">
           
           <div className="flex-1 w-full min-w-0">
             <h3 className="font-black text-xl text-slate-800 mb-6 border-b border-slate-100 pb-4">Importação de Arquivos</h3>
             
-            {/* SWITCH DUAL-MODE */}
             <div className="flex bg-slate-100 p-1.5 rounded-2xl mb-8 border border-slate-200 shadow-inner">
               <button 
                 type="button"
@@ -222,8 +286,6 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
             </div>
 
             <form onSubmit={lidarUpload} className="space-y-6">
-              
-              {/* INTERFACE DE ARQUIVO (MULTI-SELECTION HABILITADA) */}
               {modoUpload === 'arquivo' && (
                 <div className="animate-fade-in">
                   <label className="flex flex-col items-center justify-center w-full h-48 sm:h-56 border-2 border-indigo-300 border-dashed rounded-2xl cursor-pointer bg-indigo-50/50 hover:bg-indigo-50 transition-colors overflow-hidden">
@@ -277,7 +339,6 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
             </form>
           </div>
 
-          {/* PAINEL DE PREVIEW MULTI-IMAGENS COMPACTO (LATERAL DESKTOP) */}
           <div className="hidden lg:flex w-80 flex-col justify-start border-l border-slate-100 pl-10">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Fila de Upload ({previewsImagem.length})</p>
             {previewsImagem.length > 0 ? (
@@ -298,21 +359,53 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         </div>
       )}
 
-      {/* ABA DE VISUALIZAÇÃO DA GALERIA */}
       {abaAtiva === 'galeria' && (
         <div className="animate-fade-in space-y-6">
           
-          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row gap-4">
-            <div className="flex-1">
-              <input type="text" placeholder="🔍 Buscar imagem pelo nome..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
+          <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4 justify-between">
+            <div className="flex flex-col sm:flex-row gap-4 flex-1">
+              <div className="flex-1">
+                <input type="text" placeholder="🔍 Buscar imagem pelo nome..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
+              </div>
+              <div className="sm:w-64">
+                <select value={filtroAlbum} onChange={(e) => setFiltroAlbum(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
+                  <option value="Todos">📦 Todos os Álbuns</option>
+                  {albunsExistentes.map(a => <option key={a} value={a}>📁 {a}</option>)}
+                </select>
+              </div>
             </div>
-            <div className="sm:w-64">
-              <select value={filtroAlbum} onChange={(e) => setFiltroAlbum(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
-                <option value="Todos">📦 Todos os Álbuns</option>
-                {albunsExistentes.map(a => <option key={a} value={a}>📁 {a}</option>)}
-              </select>
-            </div>
+            
+            {/* BOTÃO DE MODO SELEÇÃO */}
+            <button 
+              onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} 
+              className={`px-6 py-3 font-black text-xs uppercase tracking-widest rounded-xl border shadow-sm transition-colors whitespace-nowrap ${modoSelecao ? 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100' : 'bg-slate-900 text-white border-slate-900 hover:bg-slate-800'}`}
+            >
+              {modoSelecao ? '✕ Sair da Seleção' : '📦 Seleção em Lote'}
+            </button>
           </div>
+
+          {/* PAINEL FLUTUANTE DE AÇÕES EM LOTE (Aparece quando há seleção) */}
+          {modoSelecao && (
+            <div className="bg-gradient-to-r from-indigo-900 to-blue-900 p-5 rounded-2xl shadow-xl flex flex-col md:flex-row flex-wrap gap-4 items-center justify-between animate-fade-in relative overflow-hidden border border-indigo-700">
+              <div className="absolute top-0 right-1/4 w-40 h-40 bg-blue-500/20 rounded-full blur-3xl pointer-events-none"></div>
+              
+              <div className="flex items-center gap-4 relative z-10 w-full md:w-auto">
+                <button onClick={selecionarTodasFiltradas} className="text-[10px] font-black uppercase tracking-widest bg-white/10 hover:bg-white/20 border border-white/20 text-white px-4 py-2.5 rounded-xl shadow-sm transition-all">
+                  Selecionar Tudo da Tela
+                </button>
+                <span className="text-sm font-black text-indigo-200 bg-black/20 px-3 py-1.5 rounded-lg">{selecionados.length} Itens Marcados</span>
+              </div>
+
+              <div className="flex items-center gap-3 w-full md:w-auto relative z-10">
+                <button onClick={excluirLoteSelecionadas} disabled={processandoLote || selecionados.length === 0} className="px-5 py-2.5 bg-rose-500 hover:bg-rose-600 text-white font-black uppercase tracking-widest rounded-xl text-xs transition-all disabled:opacity-50">
+                  🗑️ Excluir
+                </button>
+                <button onClick={baixarLoteSelecionadas} disabled={processandoLote || selecionados.length === 0} className="px-6 py-2.5 bg-blue-500 hover:bg-blue-400 text-white font-black uppercase tracking-widest rounded-xl text-xs transition-all shadow-[0_0_15px_rgba(59,130,246,0.4)] disabled:opacity-50">
+                  {processandoLote ? '⏳ Baixando...' : '⬇️ Baixar Lote (ZIP)'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {midiasFiltradas.length === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border-2 border-dashed border-slate-200">
@@ -321,34 +414,56 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 sm:gap-6">
-              {midiasFiltradas.map((midia) => (
-                <div key={midia.id} className="group relative bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl transition-all aspect-square sm:aspect-[4/5] flex flex-col">
-                  
-                  <div className="flex-1 relative overflow-hidden bg-slate-100">
-                    <img src={midia.url} alt={midia.titulo} loading="lazy" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+              {midiasFiltradas.map((midia) => {
+                const isSelected = selecionados.includes(midia.id);
+
+                return (
+                  <div 
+                    key={midia.id} 
+                    onClick={() => {
+                      if (modoSelecao) {
+                        if (isSelected) setSelecionados(selecionados.filter(id => id !== midia.id));
+                        else setSelecionados([...selecionados, midia.id]);
+                      }
+                    }}
+                    className={`group relative bg-white rounded-2xl shadow-sm border overflow-hidden transition-all aspect-square sm:aspect-[4/5] flex flex-col ${modoSelecao ? 'cursor-pointer hover:shadow-indigo-500/30' : 'hover:shadow-xl border-slate-200'} ${isSelected ? 'border-4 border-indigo-500 scale-[0.98]' : ''}`}
+                  >
                     
-                    {/* ACCIONS POP-UP HOVER */}
-                    <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-2.5 p-4">
-                      <button onClick={() => forcarDownload(midia.url, midia.titulo)} className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
-                        <span className="text-sm">⬇️</span> Baixar Foto
-                      </button>
-                      <button onClick={() => copiarLink(midia.url)} className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl border border-white/20 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
-                        <span className="text-sm">🔗</span> Copiar URL
-                      </button>
-                      <button onClick={() => excluirMidia(midia.id)} className="absolute top-3 right-3 w-8 h-8 bg-rose-500 hover:bg-rose-600 text-white rounded-lg flex items-center justify-center shadow-lg transition-colors">
-                        ✕
-                      </button>
+                    {/* CHECKBOX DO MODO DE SELEÇÃO */}
+                    {modoSelecao && (
+                      <div className="absolute top-3 left-3 z-20">
+                        <input type="checkbox" checked={isSelected} readOnly className="w-6 h-6 accent-indigo-600 rounded shadow-sm pointer-events-none" />
+                      </div>
+                    )}
+
+                    <div className="flex-1 relative overflow-hidden bg-slate-100">
+                      <img src={midia.url} alt={midia.titulo} loading="lazy" className={`w-full h-full object-cover transition-transform duration-500 ${!modoSelecao ? 'group-hover:scale-110' : ''}`} />
+                      
+                      {/* OVERLAY DE AÇÕES (Só aparece se NÃO estiver no modo de seleção) */}
+                      {!modoSelecao && (
+                        <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-2.5 p-4">
+                          <button onClick={(e) => { e.stopPropagation(); forcarDownload(midia.url, midia.titulo); }} className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
+                            <span className="text-sm">⬇️</span> Baixar
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); copiarLink(midia.url); }} className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl border border-white/20 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
+                            <span className="text-sm">🔗</span> Link
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); excluirMidia(midia.id); }} className="absolute top-3 right-3 w-8 h-8 bg-rose-500 hover:bg-rose-600 text-white rounded-lg flex items-center justify-center shadow-lg transition-colors">
+                            ✕
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className={`p-3 sm:p-4 border-t relative z-10 transition-colors ${isSelected ? 'bg-indigo-50 border-indigo-100' : 'bg-white border-slate-100'}`}>
+                      <p className="font-bold text-slate-800 text-xs sm:text-sm truncate" title={midia.titulo}>{midia.titulo}</p>
+                      <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mt-1.5 truncate flex items-center gap-1">
+                        <span className="opacity-70">📁</span> {midia.album}
+                      </p>
                     </div>
                   </div>
-
-                  <div className="p-3 sm:p-4 bg-white border-t border-slate-100 relative z-10">
-                    <p className="font-bold text-slate-800 text-xs sm:text-sm truncate" title={midia.titulo}>{midia.titulo}</p>
-                    <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mt-1.5 truncate flex items-center gap-1">
-                      <span className="opacity-70">📁</span> {midia.album}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
