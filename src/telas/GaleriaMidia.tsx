@@ -9,7 +9,7 @@ interface GaleriaMidiaProps {
 
 export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
   // 🚨 COLE A SUA CHAVE DO IMGBB AQUI DENTRO DAS ASPAS:
-  const IMGBB_API_KEY = '8452a49c251c1d2f8a93fe3b00e994d9';
+  const IMGBB_API_KEY = '8452a49c251c1d2f8a93fe3b00e994d9'; 
 
   const [abaAtiva, setAbaAtiva] = useState<'galeria' | 'upload'>('galeria');
   
