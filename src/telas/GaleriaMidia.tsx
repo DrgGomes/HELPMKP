@@ -59,6 +59,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
     if (!userId) return;
 
     setProcessando(true);
+    
     try {
       const albumFinal = novoAlbum.trim() !== '' ? novoAlbum.trim() : albumSelecionado;
 
@@ -69,28 +70,42 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
         }
 
         const storage = getStorage(auth.app);
+        let contagemSucesso = 0;
+        let contagemFalha = 0;
 
-        // Processamento paralelo assíncrono para velocidade máxima
+        // Processamento paralelo blindado (se um falhar, não trava os outros)
         await Promise.all(arquivos.map(async (arquivoIndividual, index) => {
-          const extensao = arquivoIndividual.name.split('.').pop();
-          const nomeSeguro = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}.${extensao}`;
-          const arquivoRef = ref(storage, `usuarios/${userId}/midias/${nomeSeguro}`);
-          
-          await uploadBytes(arquivoRef, arquivoIndividual);
-          const urlDownload = await getDownloadURL(arquivoRef);
+          try {
+            const extensao = arquivoIndividual.name.split('.').pop();
+            const nomeSeguro = `${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${index}.${extensao}`;
+            const arquivoRef = ref(storage, `usuarios/${userId}/midias/${nomeSeguro}`);
+            
+            await uploadBytes(arquivoRef, arquivoIndividual);
+            const urlDownload = await getDownloadURL(arquivoRef);
 
-          // Padronização de títulos sequenciais se for lote
-          const tituloFinal = arquivos.length > 1 && titulo 
-            ? `${titulo} (${index + 1})` 
-            : titulo || arquivoIndividual.name;
+            const tituloFinal = arquivos.length > 1 && titulo 
+              ? `${titulo} (${index + 1})` 
+              : titulo || arquivoIndividual.name;
 
-          await addDoc(collection(db, 'usuarios', userId, 'midias'), {
-            titulo: tituloFinal,
-            url: urlDownload,
-            album: albumFinal,
-            dataCriacao: new Date().toISOString()
-          });
+            await addDoc(collection(db, 'usuarios', userId, 'midias'), {
+              titulo: tituloFinal,
+              url: urlDownload,
+              album: albumFinal,
+              dataCriacao: new Date().toISOString()
+            });
+            
+            contagemSucesso++;
+          } catch (uploadError) {
+            console.error(`Erro ao subir a imagem ${arquivoIndividual.name}:`, uploadError);
+            contagemFalha++;
+          }
         }));
+
+        if (contagemFalha > 0) {
+          alert(`Processo concluído com ressalvas:\n✅ ${contagemSucesso} salvas.\n❌ ${contagemFalha} falharam.\nVerifique se o Firebase Storage está ativado no seu painel.`);
+        } else {
+          alert(`✅ Sucesso! ${contagemSucesso} imagens carregadas na central.`);
+        }
 
       } else {
         // Modo URL individual
@@ -104,19 +119,20 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
           album: albumFinal,
           dataCriacao: new Date().toISOString()
         });
+        alert("✅ Mídia salva com sucesso!");
       }
 
-      alert(`✅ Sucesso! ${modoUpload === 'arquivo' ? `${arquivos.length} imagens carregadas` : 'Mídia salva'} na central.`);
-      
-      // Reset total do formulário
-      setTitulo(''); setUrl(''); setNovoAlbum(''); setArquivos([]); setPreviewsImagem('');
+      // Reset total do formulário e redirecionamento
+      setTitulo(''); setUrl(''); setNovoAlbum(''); setArquivos([]); setPreviewsImagem([]);
       setAbaAtiva('galeria');
 
     } catch (err: any) {
-      console.error(err);
-      alert("Erro crítico no lote de upload. Verifique conexões e regras do Firebase Storage.");
+      console.error("Erro crítico na esteira de upload:", err);
+      alert("Erro crítico no sistema de upload. Se persistir, ative e verifique as regras do Firebase Storage.");
+    } finally {
+      // ESTE BLOCO GARANTE QUE O 'CARREGANDO' VAI DESAPARECER MESMO SE TUDO FALHAR
+      setProcessando(false);
     }
-    setProcessando(false);
   };
 
   const excluirMidia = async (id: string) => {
@@ -173,7 +189,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
 
       {/* ABA DE UPLOAD */}
       {abaAtiva === 'upload' && (
-        <div className="bg-white p-6 sm:p-10 rounded-3xl shadow-sm border border-slate-200 max-w-5xl anonymity-form flex flex-col lg:flex-row gap-10">
+        <div className="bg-white p-6 sm:p-10 rounded-3xl shadow-sm border border-slate-200 max-w-5xl flex flex-col lg:flex-row gap-10 animate-fade-in">
           
           <div className="flex-1 w-full min-w-0">
             <h3 className="font-black text-xl text-slate-800 mb-6 border-b border-slate-100 pb-4">Importação de Arquivos</h3>
@@ -241,7 +257,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
               </div>
 
               <div className="pt-4">
-                <button type="submit" disabled={processando || (modoUpload === 'arquivo' && arquivos.length === 0) || (modoUpload === 'link' && !url)} className="w-full py-4 sm:py-5 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs sm:text-sm rounded-xl shadow-xl transition-all flex items-center justify-center gap-2">
+                <button type="submit" disabled={processando || (modoUpload === 'arquivo' && arquivos.length === 0) || (modoUpload === 'link' && !url)} className="w-full py-4 sm:py-5 bg-slate-900 hover:bg-slate-800 text-white font-black uppercase tracking-widest text-xs sm:text-sm rounded-xl shadow-xl transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100">
                   {processando ? (
                     <><span className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></span> Processando Lote na Nuvem...</>
                   ) : (
@@ -305,10 +321,10 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                     {/* ACCIONS POP-UP HOVER */}
                     <div className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col items-center justify-center gap-2.5 p-4">
                       <button onClick={() => forcarDownload(midia.url, midia.titulo)} className="w-full py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl shadow-lg transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
-                        ⬇️ Baixar Foto
+                        <span className="text-sm">⬇️</span> Baixar Foto
                       </button>
                       <button onClick={() => copiarLink(midia.url)} className="w-full py-2.5 bg-white/10 hover:bg-white/20 text-white font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-xl border border-white/20 transform translate-y-4 group-hover:translate-y-0 transition-all duration-300 flex items-center justify-center gap-1.5">
-                        🔗 Copiar Link
+                        <span className="text-sm">🔗</span> Copiar URL
                       </button>
                       <button onClick={() => excluirMidia(midia.id)} className="absolute top-3 right-3 w-8 h-8 bg-rose-500 hover:bg-rose-600 text-white rounded-lg flex items-center justify-center shadow-lg transition-colors">
                         ✕
@@ -319,7 +335,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                   <div className="p-3 sm:p-4 bg-white border-t border-slate-100 relative z-10">
                     <p className="font-bold text-slate-800 text-xs sm:text-sm truncate" title={midia.titulo}>{midia.titulo}</p>
                     <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest mt-1.5 truncate flex items-center gap-1">
-                      <span>📁</span> {midia.album}
+                      <span className="opacity-70">📁</span> {midia.album}
                     </p>
                   </div>
                 </div>
