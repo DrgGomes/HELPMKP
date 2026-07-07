@@ -205,105 +205,97 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
     setIdFornecedorEdicao(null); setNomeForn(''); setContatoForn(''); setCategoriaForn('');
   };
 
+  const executarImpressaoProfissional = () => {
+    setTimeout(() => window.print(), 800);
+  };
+
   return (
-    <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
+    <div className="animate-fade-in max-w-[1600px] mx-auto space-y-6 sm:space-y-8 no-print">
       
-      {/* CSS DE IMPRESSÃO - PROFISSIONAL E ISOLADO */}
+      {/* CSS DE IMPRESSÃO */}
       <style dangerouslySetInnerHTML={{__html: `
         @media screen {
           .print-portal { display: none !important; }
         }
         @media print {
-          /* Desliga o sistema principal da tela inteira */
           #root { display: none !important; }
-          body { 
-            background: white !important; 
-            margin: 0 !important; 
-            padding: 0 !important; 
-            -webkit-print-color-adjust: exact; 
-            print-color-adjust: exact; 
-          }
-          /* Exibe apenas o portal gerado para impressão */
-          .print-portal { 
-            display: block !important; 
-            width: 100% !important; 
-            color: black !important;
-          }
+          body { background: white !important; margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          .print-portal { display: block !important; width: 100% !important; color: black !important; }
           @page { margin: 10mm; size: auto; }
         }
       `}} />
 
-      <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-6">
         <div>
-          <h2 className="text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
-            <span>🚚</span> Compras & Entradas
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3">
+            <span>🚚</span> Cargas
           </h2>
-          <p className="text-slate-500 font-medium mt-1">Gere requisições de fábrica, realize triagem logística por código de barras e controle remessas.</p>
+          <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">Triagem de portaria e ordens de fábrica.</p>
         </div>
       </header>
 
-      {/* ABAS */}
-      <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px">
-        <button onClick={() => setAbaAtiva('gerar')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'gerar' ? 'bg-slate-900 text-white border-t-2 border-slate-900 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
-          <span>🛒</span> 1. Gerar Ordem
+      {/* ABAS (SWIPEÁVEIS NO MOBILE) */}
+      <div className="flex overflow-x-auto scrollbar-hide gap-2 border-b border-slate-200 pb-px -mx-4 px-4 sm:mx-0 sm:px-0">
+        <button onClick={() => setAbaAtiva('gerar')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'gerar' ? 'bg-slate-900 text-white border-t-2 border-slate-900 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>🛒</span> Gerar Ordem
         </button>
-        <button onClick={() => setAbaAtiva('receber')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'receber' ? 'bg-emerald-600 text-white border-t-2 border-emerald-500 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
-          <span>⚡</span> 2. Receber Mercadoria
+        <button onClick={() => setAbaAtiva('receber')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'receber' ? 'bg-emerald-600 text-white border-t-2 border-emerald-500 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>⚡</span> Bipar Carga
         </button>
-        <button onClick={() => setAbaAtiva('lista')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'lista' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
-          <span>📋</span> Fornecedores
+        <button onClick={() => setAbaAtiva('lista')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'lista' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>
+          <span>📋</span> Fábricas
         </button>
       </div>
 
       {/* ABA 1: GERAR ORDEM */}
       {abaAtiva === 'gerar' && (
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in">
-          <div className="xl:col-span-5 bg-white p-8 rounded-3xl shadow-sm border border-slate-200">
-            <h3 className="font-black text-xl text-slate-800 tracking-tight mb-6 border-b border-slate-100 pb-4">Nova Ordem de Compra</h3>
-            <div className="space-y-5">
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start animate-fade-in">
+          <div className="xl:col-span-5 bg-white p-5 sm:p-8 rounded-3xl shadow-sm border border-slate-200">
+            <h3 className="font-black text-lg sm:text-xl text-slate-800 tracking-tight mb-6 border-b border-slate-100 pb-4">Nova Ordem</h3>
+            <div className="space-y-4">
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Fornecedor / Fábrica</label>
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Fábrica</label>
                 <select value={fornecedorSelecionado} onChange={(e) => setFornecedorSelecionado(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
                   <option value="">Selecionar Fábrica...</option>
                   {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Data de Emissão</label>
-                  <input type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500" />
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Emissão</label>
+                  <input type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" />
                 </div>
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vencimento da Fatura</label>
-                  <input type="date" value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-indigo-500" />
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vencimento</label>
+                  <input type="date" value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" />
                 </div>
               </div>
               <div>
-                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Número do Vale / NF (Opcional)</label>
-                <input type="text" placeholder="Ex: VALE-1234" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 font-mono text-slate-700" />
+                <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Vale / NF</label>
+                <input type="text" placeholder="Ex: VALE-1234" value={numeroVale} onChange={(e) => setNumeroVale(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-700 outline-none" />
               </div>
-              <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 mt-6 space-y-4">
-                <h4 className="font-black text-indigo-900 text-sm">Adicionar Itens</h4>
+              <div className="bg-indigo-50 p-4 sm:p-5 rounded-2xl border border-indigo-100 mt-6 space-y-4">
+                <h4 className="font-black text-indigo-900 text-sm">Adicionar Insumos</h4>
                 <select value={produtoSelecionado} onChange={(e) => { setProdutoSelecionado(e.target.value); const p = produtos.find(x => x.id === e.target.value); if (p) setCustoUnitario(p.custoBase.toString()); }} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-700 outline-none"><option value="">Escolher Produto...</option>{produtos.map(p => <option key={p.id} value={p.id}>{p.titulo}</option>)}</select>
                 <div className="flex gap-3">
-                  <div className="w-1/3"><input type="number" min="1" placeholder="Qtd" value={quantidadeDesejada} onChange={(e) => setQuantidadeDesejada(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-black text-indigo-700 outline-none text-center" /></div>
-                  <div className="w-2/3 relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span><input type="number" step="0.01" placeholder="0.00" value={custoUnitario} onChange={(e) => setCustoUnitario(e.target.value)} className="w-full pl-10 pr-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl font-black text-lg text-slate-800 outline-none focus:border-indigo-500" /></div>
+                  <div className="w-1/3"><input type="number" min="1" placeholder="Qtd" value={quantidadeDesejada} onChange={(e) => setQuantidadeDesejada(parseInt(e.target.value) || 0)} className="w-full px-4 py-3 bg-white border border-indigo-200 rounded-xl text-sm font-black text-indigo-700 text-center outline-none" /></div>
+                  <div className="w-2/3 relative"><span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-black">R$</span><input type="number" step="0.01" placeholder="0.00" value={custoUnitario} onChange={(e) => setCustoUnitario(e.target.value)} className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black text-base text-slate-800 outline-none" /></div>
                 </div>
-                <button type="button" onClick={adicionarAoCarrinho} className="w-full py-2.5 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider transition-colors hover:bg-indigo-700">Incluir na Lista</button>
+                <button type="button" onClick={adicionarAoCarrinho} className="w-full py-3 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-wider">Incluir na Lista</button>
               </div>
             </div>
           </div>
           <div className="xl:col-span-7 space-y-4">
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 min-h-[400px] flex flex-col justify-between">
+            <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 min-h-[400px] flex flex-col justify-between">
               <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-4">Itens Mapeados na Ordem</p>
-                {itensCarrinho.length === 0 ? <p className="text-sm font-bold text-slate-400 text-center py-20">Nenhum insumo adicionado.</p> : (
-                  <div className="divide-y divide-slate-100">{itensCarrinho.map((item, idx) => <div key={idx} className="py-3 flex justify-between items-center"><div className="min-w-0"><p className="font-bold text-slate-800 text-sm truncate">{item.nome}</p><p className="text-[10px] text-slate-400 font-bold">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div><div className="flex items-center gap-4"><span className="font-black text-slate-700 text-sm">R$ {item.subtotal.toFixed(2)}</span><button type="button" onClick={() => removerDoCarrinho(idx)} className="text-rose-500 font-bold text-sm hover:text-rose-600">✕</button></div></div>)}</div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Itens Mapeados</p>
+                {itensCarrinho.length === 0 ? <p className="text-sm font-bold text-slate-400 text-center py-10 sm:py-20">Nenhum item na carga.</p> : (
+                  <div className="divide-y divide-slate-100">{itensCarrinho.map((item, idx) => <div key={idx} className="py-3 flex justify-between items-center"><div className="min-w-0 pr-2"><p className="font-bold text-slate-800 text-xs sm:text-sm truncate">{item.nome}</p><p className="text-[10px] text-slate-400 font-bold">{item.quantidade}x R$ {item.custoUnitario.toFixed(2)}</p></div><div className="flex items-center gap-3"><span className="font-black text-slate-700 text-xs sm:text-sm">R$ {item.subtotal.toFixed(2)}</span><button type="button" onClick={() => removerDoCarrinho(idx)} className="text-rose-500 font-bold text-lg">✕</button></div></div>)}</div>
                 )}
               </div>
               <div className="pt-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
-                <div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Valor Total Líquido</p><p className="text-3xl font-black text-slate-900 font-mono">R$ {valorTotalOrdem.toFixed(2)}</p></div>
-                <button onClick={finalizarOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md shadow-emerald-500/20 disabled:opacity-50 transition-colors">{processandoOrdem ? 'Processando...' : 'Gravar e Enviar Ordem'}</button>
+                <div className="text-center sm:text-left"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Total Líquido</p><p className="text-2xl sm:text-3xl font-black text-slate-900 font-mono">R$ {valorTotalOrdem.toFixed(2)}</p></div>
+                <button onClick={finalizarOrdem} disabled={processandoOrdem || itensCarrinho.length === 0} className="w-full sm:w-auto px-8 py-3.5 bg-emerald-500 text-slate-900 font-black uppercase tracking-widest rounded-xl text-xs shadow-md disabled:opacity-50">{processandoOrdem ? 'Processando...' : 'Gravar Ordem'}</button>
               </div>
             </div>
           </div>
@@ -312,47 +304,48 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
 
       {/* ABA 2: RECEBER MERCADORIA */}
       {abaAtiva === 'receber' && (
-        <div className="animate-fade-in space-y-10">
+        <div className="animate-fade-in space-y-8">
+          
           {comprasSemFatura.length > 0 && (
-            <div className="bg-rose-950 border border-rose-500/50 p-6 rounded-3xl flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl animate-pulse">
-              <div><h3 className="text-rose-400 font-black text-lg flex items-center gap-2"><span>🚨</span> Alerta de Auditoria</h3><p className="text-rose-200/70 font-medium text-sm mt-1">Existem ordens recebidas que não geraram lançamento financeiro automático. Clique ao lado para regularizar.</p></div>
-              <button onClick={corrigirFaturasAntigas} disabled={processandoRecebimento} className="px-6 py-3 bg-rose-600 hover:bg-rose-500 text-white font-black uppercase tracking-widest rounded-xl text-xs whitespace-nowrap transition-colors disabled:opacity-50">{processandoRecebimento ? 'Processando...' : 'Sincronizar com Caixa'}</button>
+            <div className="bg-rose-950 border border-rose-500/50 p-5 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
+              <div className="text-center md:text-left"><h3 className="text-rose-400 font-black text-sm sm:text-base flex items-center justify-center md:justify-start gap-2"><span>🚨</span> Alerta de Auditoria</h3><p className="text-rose-200/70 text-xs mt-1">Existem ordens que não geraram cobrança no Caixa.</p></div>
+              <button onClick={corrigirFaturasAntigas} disabled={processandoRecebimento} className="w-full md:w-auto px-4 py-3 bg-rose-600 text-white font-black uppercase rounded-xl text-[10px] tracking-widest">Sincronizar Caixa</button>
             </div>
           )}
 
-          <div className="bg-[#064e3b] rounded-[2.5rem] p-10 text-center shadow-xl border border-emerald-900/50 max-w-4xl mx-auto">
-            <span className="text-6xl block mb-4 drop-shadow-lg">🎯</span>
-            <h3 className="text-3xl font-black text-white mb-2 tracking-tight">Bipe a Ordem de Compra</h3>
-            <p className="text-emerald-300 font-medium mb-8">Passe o leitor de código de barras físico no vale impresso para dar entrada automática.</p>
+          <div className="bg-[#064e3b] rounded-[2rem] p-6 sm:p-10 text-center shadow-xl border border-emerald-900/50 max-w-4xl mx-auto">
+            <span className="text-5xl sm:text-6xl block mb-3 sm:mb-4 drop-shadow-lg">🎯</span>
+            <h3 className="text-2xl sm:text-3xl font-black text-white mb-2 tracking-tight">Triagem Logística</h3>
+            <p className="text-emerald-300 text-xs sm:text-sm mb-6">Bipe o código na folha para liberar a carga.</p>
             <div className="max-w-xl mx-auto">
-              <input type="text" placeholder="Ex: ORD-171829" value={codigoBip} onChange={(e) => setCodigoBip(e.target.value)} onKeyDown={lidarBip} className="w-full bg-[#022c22] border-2 border-emerald-500/50 text-emerald-400 text-center text-3xl font-black font-mono py-6 rounded-2xl outline-none placeholder:text-emerald-900/40 focus:border-emerald-400 transition-colors" />
+              <input type="text" placeholder="ORD-123456" value={codigoBip} onChange={(e) => setCodigoBip(e.target.value)} onKeyDown={lidarBip} className="w-full bg-[#022c22] border-2 border-emerald-500/50 text-emerald-400 text-center text-xl sm:text-3xl font-black font-mono py-4 sm:py-5 rounded-xl outline-none placeholder:text-emerald-900/40 focus:border-emerald-400" />
             </div>
           </div>
 
           <div>
-            <div className="flex items-center gap-3 mb-6"><span className="text-2xl">🚚</span><h3 className="text-xl font-black text-slate-800">Ordens Aguardando Chegada</h3></div>
+            <div className="flex items-center gap-2 mb-4 sm:mb-6"><span className="text-xl sm:text-2xl">📦</span><h3 className="text-lg sm:text-xl font-black text-slate-800">Cargas na Rua</h3></div>
             {comprasAguardando.length === 0 ? (
-              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-12 text-center"><span className="text-5xl block mb-4 opacity-40">🛣️</span><p className="text-slate-500 font-bold text-lg">Nenhum caminhão pendente de triagem.</p></div>
+              <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl p-8 sm:p-12 text-center"><span className="text-4xl block mb-3 opacity-30">🛣️</span><p className="text-slate-500 font-bold text-sm sm:text-lg">Nenhuma carga pendente.</p></div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
                 {comprasAguardando.map(compra => {
                   const isAtrasado = compra.dataPagamento && compra.dataPagamento < new Date().toISOString().split('T')[0];
                   return (
-                    <div key={compra.id} className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow">
+                    <div key={compra.id} className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
                       <div>
-                        <div className="flex justify-between items-start mb-4"><span className="bg-amber-100 text-amber-800 text-[9px] font-black px-2.5 py-1 rounded-md border border-amber-200 uppercase">Aguardando</span><span className="text-slate-400 font-mono text-xs font-bold">{compra.codigoOrdem}</span></div>
-                        <h3 className="text-lg font-black text-slate-800 mb-4">{compra.fornecedorNome}</h3>
-                        <div className="space-y-2.5 bg-slate-50 p-4 rounded-2xl border border-slate-100 font-mono text-xs font-bold mb-6">
-                          <div className="flex justify-between"><span>EMISSÃO:</span><span className="text-slate-700">{compra.dataCompra.split('-').reverse().join('/')}</span></div>
-                          <div className="flex justify-between"><span>FATURA:</span><span className={isAtrasado ? 'text-rose-600 font-black' : 'text-slate-700'}>{compra.dataPagamento?.split('-').reverse().join('/') || '---'}</span></div>
-                          {compra.numeroVale && <div className="flex justify-between"><span>VALE / NF:</span><span className="text-indigo-600 font-black">{compra.numeroVale}</span></div>}
+                        <div className="flex justify-between items-start mb-3"><span className="bg-amber-100 text-amber-800 text-[8px] sm:text-[9px] font-black px-2 py-1 rounded border border-amber-200 uppercase">Aguardando</span><span className="text-slate-400 font-mono text-[10px] sm:text-xs font-bold">{compra.codigoOrdem}</span></div>
+                        <h3 className="text-base sm:text-lg font-black text-slate-800 mb-4">{compra.fornecedorNome}</h3>
+                        <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100 font-mono text-[10px] sm:text-xs font-bold mb-4">
+                          <div className="flex justify-between"><span>EMI:</span><span className="text-slate-700">{compra.dataCompra.split('-').reverse().join('/')}</span></div>
+                          <div className="flex justify-between"><span>VENC:</span><span className={isAtrasado ? 'text-rose-600 font-black' : 'text-slate-700'}>{compra.dataPagamento?.split('-').reverse().join('/') || '---'}</span></div>
+                          {compra.numeroVale && <div className="flex justify-between"><span>NF:</span><span className="text-indigo-600 font-black">{compra.numeroVale}</span></div>}
                         </div>
                       </div>
-                      <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                        <span className="text-xl font-black font-mono tracking-tight">R$ {compra.valorTotal.toFixed(2)}</span>
-                        <div className="flex gap-2">
-                          <button onClick={() => setOrdensParaImprimir([compra])} className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-600 rounded-xl text-xs font-black shadow-sm transition-colors" title="Visualizar e Imprimir Ficha">🖨️ Ficha</button>
-                          <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-4 py-2.5 bg-emerald-50 hover:bg-emerald-500 text-emerald-700 hover:text-white border border-emerald-200 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50">Receber</button>
+                      <div className="flex items-center justify-between pt-3 sm:pt-4 border-t border-slate-100">
+                        <span className="text-lg sm:text-xl font-black font-mono">R$ {compra.valorTotal.toFixed(2)}</span>
+                        <div className="flex gap-1.5 sm:gap-2">
+                          <button onClick={() => setOrdensParaImprimir([compra])} className="px-2 sm:px-3 py-2 bg-slate-100 text-slate-600 rounded-lg text-[9px] sm:text-[10px] font-black uppercase">🖨️ Ficha</button>
+                          <button onClick={() => registrarRecebimento(compra)} disabled={processandoRecebimento} className="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-[9px] sm:text-[10px] font-black uppercase">Receber</button>
                         </div>
                       </div>
                     </div>
@@ -364,27 +357,27 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       )}
 
-      {/* ABA 3: CRUD LISTA FORNECEDORES */}
+      {/* ABA 3: FORNECEDORES */}
       {abaAtiva === 'lista' && (
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 animate-fade-in">
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fade-in">
           <div className="xl:col-span-1">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 sticky top-24">
-              <h3 className="text-xl font-black text-slate-800 mb-6 border-b border-slate-100 pb-3">{idFornecedorEdicao ? 'Editar Fornecedor' : 'Novo Fornecedor'}</h3>
+            <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200">
+              <h3 className="text-lg font-black text-slate-800 mb-5 pb-3 border-b border-slate-100">{idFornecedorEdicao ? 'Editar Fábrica' : 'Nova Fábrica'}</h3>
               <form onSubmit={salvarFornecedor} className="space-y-4">
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Nome da Fábrica</label><input type="text" required value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">WhatsApp / Contato</label><input type="text" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">Insumo Principal</label><input type="text" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500 transition-colors" /></div>
-                <div className="pt-2"><button type="submit" className="w-full py-3.5 bg-slate-900 hover:bg-indigo-600 text-white font-black text-sm uppercase tracking-widest rounded-xl transition-all shadow-md">{idFornecedorEdicao ? 'Atualizar Ficha' : 'Cadastrar Fábrica'}</button></div>
+                <div><input type="text" required placeholder="Nome" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
+                <div><input type="text" placeholder="Contato" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
+                <div><input type="text" placeholder="Insumo Principal" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
+                <button type="submit" className="w-full py-3.5 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl">{idFornecedorEdicao ? 'Atualizar' : 'Cadastrar'}</button>
               </form>
             </div>
           </div>
-          <div className="xl:col-span-2 space-y-4">
+          <div className="xl:col-span-2 space-y-3">
             {fornecedores.map(forn => (
-              <div key={forn.id} className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:border-indigo-200 transition-colors">
-                <div><h4 className="text-lg font-black text-slate-800 leading-tight">{forn.nome}</h4><p className="text-xs font-bold text-slate-500 mt-1">{forn.contato} • <span className="bg-slate-100 px-2 py-0.5 rounded text-[10px] uppercase font-black">{forn.categoriaInsumo || 'Geral'}</span></p></div>
-                <div className="flex gap-2">
-                  <button onClick={() => { setIdFornecedorEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-10 h-10 bg-slate-50 hover:bg-indigo-50 text-slate-500 hover:text-indigo-600 rounded-xl border border-slate-200 flex items-center justify-center transition-colors">✏️</button>
-                  <button onClick={async () => { if(window.confirm("Excluir fornecedor?")) await deleteDoc(doc(db, 'usuarios', auth.currentUser!.uid, 'fornecedores', forn.id)); }} className="w-10 h-10 bg-rose-50 hover:bg-rose-500 text-rose-500 hover:text-white rounded-xl border border-rose-200 flex items-center justify-center transition-colors">✕</button>
+              <div key={forn.id} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
+                <div className="pr-4"><h4 className="text-base font-black text-slate-800">{forn.nome}</h4><p className="text-[10px] sm:text-xs font-bold text-slate-500 mt-1">{forn.contato} • <span className="bg-slate-100 px-1.5 py-0.5 rounded uppercase font-black">{forn.categoriaInsumo || 'Geral'}</span></p></div>
+                <div className="flex gap-1 sm:gap-2">
+                  <button onClick={() => { setIdFornecedorEdicao(forn.id); setNomeForn(forn.nome); setContatoForn(forn.contato); setCategoriaForn(forn.categoriaInsumo); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="w-8 h-8 sm:w-10 sm:h-10 bg-slate-50 text-slate-500 rounded-lg flex items-center justify-center">✏️</button>
+                  <button onClick={async () => { if(window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', auth.currentUser!.uid, 'fornecedores', forn.id)); }} className="w-8 h-8 sm:w-10 sm:h-10 bg-rose-50 text-rose-500 rounded-lg flex items-center justify-center">✕</button>
                 </div>
               </div>
             ))}
@@ -392,85 +385,39 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       )}
 
-      {/* HISTÓRICO COMPLETO COM OPÇÃO DE IMPRESSÃO EM LOTE */}
-      <div className="mt-12">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <span className="text-2xl">📋</span>
-            <h3 className="text-xl font-black text-slate-800">Histórico de Ordens / Arquivo Log</h3>
-          </div>
-          
-          {/* BOTÃO MÁGICO DE IMPRESSÃO EM MASSA */}
+      {/* ARQUIVO DE LOG / HISTÓRICO COM LOTE */}
+      <div className="mt-10 sm:mt-12">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-4">
+          <div className="flex items-center gap-2 sm:gap-3"><span className="text-xl sm:text-2xl">📋</span><h3 className="text-lg sm:text-xl font-black text-slate-800">Arquivo Geral</h3></div>
           {selecionadosImpressao.length > 0 && (
-            <button 
-              onClick={() => {
-                const ordensFiltradas = compras.filter(c => selecionadosImpressao.includes(c.id));
-                setOrdensParaImprimir(ordensFiltradas);
-              }} 
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md transition-colors flex items-center gap-2 animate-fade-in"
-            >
-              <span>🖨️</span> Imprimir {selecionadosImpressao.length} Ordens
+            <button onClick={() => setOrdensParaImprimir(compras.filter(c => selecionadosImpressao.includes(c.id)))} className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-md flex items-center justify-center gap-2 animate-fade-in">
+              <span>🖨️</span> Imprimir {selecionadosImpressao.length} Selecionadas
             </button>
           )}
         </div>
 
-        <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          <div className="overflow-x-auto scrollbar-hide">
+            <table className="w-full text-left text-[10px] sm:text-xs border-collapse whitespace-nowrap">
               <thead>
-                <tr className="bg-slate-900 text-white font-black uppercase tracking-widest text-[9px] border-b border-slate-800">
-                  <th className="p-4 w-12 text-center">
-                    <input 
-                      type="checkbox"
-                      checked={selecionadosImpressao.length === compras.length && compras.length > 0}
-                      onChange={() => {
-                        if (selecionadosImpressao.length === compras.length) setSelecionadosImpressao([]);
-                        else setSelecionadosImpressao(compras.map(c => c.id));
-                      }}
-                      className="accent-indigo-500 w-4 h-4 rounded cursor-pointer"
-                    />
-                  </th>
-                  <th className="p-4">Código Ordem</th>
-                  <th className="p-4">Fornecedor</th>
-                  <th className="p-4">Emissão</th>
-                  <th className="p-4">Vencimento</th>
-                  <th className="p-4">Vale / NF</th>
-                  <th className="p-4">Status Logístico</th>
-                  <th className="p-4 text-right">Valor Total</th>
-                  <th className="p-4 text-center">Ações</th>
+                <tr className="bg-slate-900 text-white font-black uppercase tracking-widest text-[8px] sm:text-[9px] border-b border-slate-800">
+                  <th className="p-3 sm:p-4 w-10 text-center"><input type="checkbox" checked={selecionadosImpressao.length === compras.length && compras.length > 0} onChange={() => setSelecionadosImpressao(selecionadosImpressao.length === compras.length ? [] : compras.map(c => c.id))} className="accent-indigo-500 w-3 h-3 sm:w-4 sm:h-4 rounded" /></th>
+                  <th className="p-3 sm:p-4">Código</th>
+                  <th className="p-3 sm:p-4">Fábrica</th>
+                  <th className="p-3 sm:p-4">Emissão</th>
+                  <th className="p-3 sm:p-4">Status</th>
+                  <th className="p-3 sm:p-4 text-right">Total</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
                 {compras.map(c => (
-                  <tr key={c.id} className={`hover:bg-slate-50 transition-colors ${selecionadosImpressao.includes(c.id) ? 'bg-indigo-50/30' : ''}`}>
-                    <td className="p-4 text-center">
-                      <input 
-                        type="checkbox"
-                        checked={selecionadosImpressao.includes(c.id)}
-                        onChange={() => {
-                          if (selecionadosImpressao.includes(c.id)) {
-                            setSelecionadosImpressao(selecionadosImpressao.filter(id => id !== c.id));
-                          } else {
-                            setSelecionadosImpressao([...selecionadosImpressao, c.id]);
-                          }
-                        }}
-                        className="accent-indigo-600 w-4 h-4 rounded cursor-pointer"
-                      />
-                    </td>
-                    <td className="p-4 font-mono font-black text-slate-900">{c.codigoOrdem}</td>
-                    <td className="p-4 font-black">{c.fornecedorNome}</td>
-                    <td className="p-4 font-mono">{c.dataCompra.split('-').reverse().join('/')}</td>
-                    <td className="p-4 font-mono">{c.dataPagamento?.split('-').reverse().join('/') || '---'}</td>
-                    <td className="p-4 font-mono text-indigo-600">{c.numeroVale || '---'}</td>
-                    <td className="p-4">
-                      <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${c.statusChegada === 'recebido' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>
-                        {c.statusChegada}
-                      </span>
-                    </td>
-                    <td className="p-4 font-mono text-right font-black text-slate-900">R$ {c.valorTotal.toFixed(2)}</td>
-                    <td className="p-4 text-center">
-                      <button onClick={() => setOrdensParaImprimir([c])} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-900 hover:text-white rounded-lg border border-slate-200 transition-colors text-[10px] font-black uppercase tracking-widest shadow-sm">🖨️ Ficha</button>
-                    </td>
+                  <tr key={c.id} className={`hover:bg-slate-50 ${selecionadosImpressao.includes(c.id) ? 'bg-indigo-50/30' : ''}`}>
+                    <td className="p-3 sm:p-4 text-center"><input type="checkbox" checked={selecionadosImpressao.includes(c.id)} onChange={() => setSelecionadosImpressao(selecionadosImpressao.includes(c.id) ? selecionadosImpressao.filter(id => id !== c.id) : [...selecionadosImpressao, c.id])} className="accent-indigo-600 w-3 h-3 sm:w-4 sm:h-4 rounded" /></td>
+                    <td className="p-3 sm:p-4 font-mono text-slate-900">{c.codigoOrdem}</td>
+                    <td className="p-3 sm:p-4">{c.fornecedorNome}</td>
+                    <td className="p-3 sm:p-4 font-mono">{c.dataCompra.split('-').reverse().join('/')}</td>
+                    <td className="p-3 sm:p-4"><span className={`px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-black uppercase border ${c.statusChegada === 'recebido' ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-amber-50 text-amber-600 border-amber-200'}`}>{c.statusChegada}</span></td>
+                    <td className="p-3 sm:p-4 font-mono text-right text-slate-900">R$ {c.valorTotal.toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -479,136 +426,75 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         </div>
       </div>
 
-      {/* MOTOR DE IMPRESSÃO PROFISSIONAL (PORTAL RENDERIZADO DIRETAMENTE NO BODY) */}
+      {/* PORTAL ENTERPRISE DE IMPRESSÃO (ISOLADO PARA NÃO QUEBRAR O LAYOUT MOBILE) */}
       {ordensParaImprimir && ordensParaImprimir.length > 0 && createPortal(
         <>
-          {/* A VISÃO DE TELA (MODAL) QUE O USUÁRIO VÊ ANTES DE IMPRIMIR */}
-          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[100] flex justify-center items-center p-4 animate-fade-in print:hidden">
-            <div className="bg-white w-full max-w-3xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
-              <div className="bg-slate-900 p-6 text-white flex justify-between items-center">
-                <div>
-                  <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Visualização de Documento Fiscal</p>
-                  <h3 className="text-2xl font-black">
-                    {ordensParaImprimir.length > 1 ? `Lote de Impressão (${ordensParaImprimir.length} Ordens)` : ordensParaImprimir[0].codigoOrdem}
-                  </h3>
-                </div>
-                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-10 h-10 bg-slate-800 hover:bg-slate-700 rounded-full font-black text-xl flex items-center justify-center transition-colors">✕</button>
+          {/* TELA DE PREVIEW NO DISPOSITIVO (NÃO IMPRIME) */}
+          <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-[200] flex justify-center items-center p-4 animate-fade-in print:hidden">
+            <div className="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]">
+              <div className="bg-slate-900 p-5 sm:p-6 text-white flex justify-between items-center">
+                <div><p className="text-[8px] sm:text-[10px] font-black text-blue-400 uppercase tracking-widest mb-1">Preview A4</p><h3 className="text-xl sm:text-2xl font-black">{ordensParaImprimir.length > 1 ? `Lote (${ordensParaImprimir.length})` : ordensParaImprimir[0].codigoOrdem}</h3></div>
+                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="w-8 h-8 sm:w-10 sm:h-10 bg-slate-800 rounded-full font-black text-lg flex items-center justify-center">✕</button>
               </div>
-
-              {/* CONTEÚDO SCROLLÁVEL NA TELA */}
-              <div className="p-8 overflow-y-auto flex-1 bg-slate-100">
-                <div className="bg-white p-8 shadow-sm border border-slate-200 rounded-xl">
-                  <p className="text-center font-bold text-slate-500 mb-6 text-sm">Preview do Layout de Impressão</p>
-                  {ordensParaImprimir.map((ordem, index) => (
-                    <div key={`preview-${ordem.id}`} className={index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-300 pb-12 mb-12' : ''}>
-                      <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
-                        <div>
-                          <h1 className="text-2xl font-black tracking-tight uppercase text-black">Ordem de Compra / Mercadoria</h1>
-                          <p className="text-xs font-bold text-slate-500 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
-                          <div className="mt-4 space-y-1 font-mono text-xs text-black">
-                            <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
-                            <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
-                            <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
-                            {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
-                          </div>
-                        </div>
-                      </div>
-                      <table className="w-full text-left text-xs border-collapse mb-8 text-black">
-                        <thead>
-                          <tr className="border-b-2 border-black bg-slate-100 font-black uppercase text-[10px] tracking-wider">
-                            <th className="p-3">Insumo / Descrição</th>
-                            <th className="p-3 text-center">Qtd</th>
-                            <th className="p-3 text-right">Custo Un.</th>
-                            <th className="p-3 text-right">Subtotal</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-300 font-bold">
-                          {ordem.itens.map((item, idx) => (
-                            <tr key={idx}>
-                              <td className="p-3">{item.nome}</td>
-                              <td className="p-3 text-center font-mono">{item.quantidade} UN</td>
-                              <td className="p-3 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
-                              <td className="p-3 text-right font-mono">R$ {item.subtotal.toFixed(2)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      <div className="border-t-2 border-black pt-4 flex justify-between items-center text-black">
-                        <div className="text-xs font-medium"><p>Status: {ordem.statusChegada.toUpperCase()}</p></div>
-                        <div className="text-right"><p className="text-[10px] font-black uppercase tracking-widest mb-1">Total Consolidado</p><p className="text-2xl font-black font-mono tracking-tight">R$ {ordem.valorTotal.toFixed(2)}</p></div>
-                      </div>
-                    </div>
-                  ))}
+              <div className="p-4 sm:p-8 overflow-y-auto flex-1 bg-slate-100">
+                <div className="bg-white p-4 sm:p-8 shadow-sm border border-slate-200 rounded-xl pointer-events-none opacity-80">
+                  <p className="text-center font-bold text-slate-500 mb-6 text-[10px] sm:text-sm uppercase tracking-widest">Pré-visualização Simbólica (Clique em Imprimir)</p>
                 </div>
               </div>
-
-              <div className="bg-white p-6 border-t border-slate-200 flex justify-end gap-3 mt-auto">
-                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-5 py-3 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-black uppercase tracking-widest text-slate-600 transition-colors shadow-sm">Cancelar</button>
-                <button onClick={() => window.print()} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-blue-500/30 transition-all transform hover:scale-105">
-                  🖨️ Iniciar Impressão A4
-                </button>
+              <div className="bg-white p-4 sm:p-6 border-t border-slate-200 flex justify-end gap-2 sm:gap-3">
+                <button onClick={() => { setOrdensParaImprimir(null); setSelecionadosImpressao([]); }} className="px-4 py-3 bg-white border border-slate-200 rounded-xl text-[10px] sm:text-xs font-black uppercase text-slate-600">Cancelar</button>
+                <button onClick={executarImpressaoProfissional} className="px-5 py-3 bg-blue-600 text-white font-black uppercase text-[10px] sm:text-xs rounded-xl shadow-lg">🖨️ Imprimir A4</button>
               </div>
             </div>
           </div>
 
-          {/* O DOCUMENTO REAL QUE VAI PARA A IMPRESSORA (INVISÍVEL NA TELA, VISÍVEL NO PAPEL) */}
-          <div className="print-portal bg-white text-black font-sans p-8 w-full">
+          {/* O CÓDIGO REAL QUE VAI PARA A IMPRESSORA (PERFEITO, SEM CORTES, CÓDIGOS DE ALTA RESOLUÇÃO) */}
+          <div className="print-portal bg-white text-black font-sans p-2 w-full">
             {ordensParaImprimir.map((ordem, index) => (
-              <div key={`print-${ordem.id}`} style={{ pageBreakInside: 'avoid' }} className={index !== ordensParaImprimir.length - 1 ? 'border-b-2 border-dashed border-slate-400 pb-12 mb-12' : ''}>
+              <div key={`print-${ordem.id}`} style={{ pageBreakInside: 'avoid' }} className={index !== ordensParaImprimir.length - 1 ? 'border-b border-dashed border-slate-400 pb-12 mb-12' : ''}>
                 
-                <div className="flex justify-between items-start border-b-4 border-black pb-6 mb-6">
+                <div className="flex justify-between items-start border-b-2 border-black pb-4 mb-4">
                   <div>
-                    <h1 className="text-3xl font-black tracking-tight uppercase">Ordem de Compra / Mercadoria</h1>
-                    <p className="text-xs font-bold text-slate-600 mt-1">HelpMkp Enterprise ERP - Automação Industrial</p>
-                    <div className="mt-4 space-y-1 font-mono text-xs text-black">
-                      <p><strong>FORNECEDOR:</strong> {ordem.fornecedorNome}</p>
+                    <h1 className="text-2xl font-black tracking-tight uppercase">Ordem de Fábrica</h1>
+                    <p className="text-[10px] font-bold text-slate-600 mt-1">HelpMkp Enterprise ERP</p>
+                    <div className="mt-3 space-y-0.5 font-mono text-[10px] text-black">
+                      <p><strong>FABRICA:</strong> {ordem.fornecedorNome}</p>
                       <p><strong>EMISSÃO:</strong> {ordem.dataCompra.split('-').reverse().join('/')}</p>
                       <p><strong>VENCIMENTO:</strong> {ordem.dataPagamento?.split('-').reverse().join('/') || '---'}</p>
-                      {ordem.numeroVale && <p><strong>VALE / COORDENAÇÃO NF:</strong> {ordem.numeroVale}</p>}
+                      {ordem.numeroVale && <p><strong>VALE:</strong> {ordem.numeroVale}</p>}
                     </div>
                   </div>
                   
-                  <div className="text-center space-y-4">
-                    <div>
-                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${ordem.codigoOrdem}`} alt="QR Code da Ordem" className="w-24 h-24 mx-auto border-2 border-black" />
-                      <p className="text-[8px] font-black text-black uppercase tracking-wider mt-1">QR Rastreio</p>
-                    </div>
-                    <div>
-                      <img src={`https://bwipjs-api.metafloor.com/?bcid=code128&text=${ordem.codigoOrdem}&scale=2&rotate=N&includetext`} alt="Código de Barras da Ordem" className="h-10 object-contain mx-auto" />
-                    </div>
+                  <div className="text-center">
+                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${ordem.codigoOrdem}`} alt="QR" loading="eager" className="w-16 h-16 mx-auto" />
+                    <img src={`https://barcode.tec-it.com/barcode.ashx?data=${ordem.codigoOrdem}&code=Code128`} alt="Barcode" loading="eager" className="h-8 w-auto object-contain mx-auto mt-2" />
                   </div>
                 </div>
 
-                <table className="w-full text-left text-xs border-collapse mb-8 text-black">
+                <table className="w-full text-left text-[10px] border-collapse mb-4 text-black">
                   <thead>
-                    <tr className="border-b-2 border-black font-black uppercase text-[10px] tracking-wider">
-                      <th className="p-2">Insumo / Descrição do Produto</th>
-                      <th className="p-2 text-center">Quantidade</th>
-                      <th className="p-2 text-right">Custo Unitário</th>
-                      <th className="p-2 text-right">Subtotal Líquido</th>
+                    <tr className="border-b border-black font-black uppercase">
+                      <th className="p-1">Insumo</th>
+                      <th className="p-1 text-center">Qtd</th>
+                      <th className="p-1 text-right">Unidade</th>
+                      <th className="p-1 text-right">Subtotal</th>
                     </tr>
                   </thead>
-                  <tbody className="font-bold">
+                  <tbody>
                     {ordem.itens.map((item, idx) => (
-                      <tr key={idx} className="border-b border-slate-300">
-                        <td className="p-2">{item.nome}</td>
-                        <td className="p-2 text-center font-mono">{item.quantidade} UN</td>
-                        <td className="p-2 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
-                        <td className="p-2 text-right font-mono text-black">R$ {item.subtotal.toFixed(2)}</td>
+                      <tr key={idx} className="border-b border-slate-200">
+                        <td className="p-1 font-bold">{item.nome}</td>
+                        <td className="p-1 text-center font-mono">{item.quantidade}</td>
+                        <td className="p-1 text-right font-mono">R$ {item.custoUnitario.toFixed(2)}</td>
+                        <td className="p-1 text-right font-mono font-bold">R$ {item.subtotal.toFixed(2)}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
 
-                <div className="border-t-2 border-black pt-4 flex justify-between items-center text-black">
-                  <div className="text-xs font-medium">
-                    <p>Status da Remessa: {ordem.statusChegada.toUpperCase()}</p>
-                    <p className="mt-1">Autenticação: {ordem.id}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] font-black uppercase tracking-widest mb-1">Custo Total Consolidado</p>
-                    <p className="text-3xl font-black font-mono tracking-tight">R$ {ordem.valorTotal.toFixed(2)}</p>
-                  </div>
+                <div className="border-t border-black pt-2 flex justify-between items-center text-black">
+                  <div className="text-[10px]"><p>Status: {ordem.statusChegada.toUpperCase()}</p></div>
+                  <div className="text-right"><p className="text-[8px] font-black uppercase tracking-widest mb-0.5">Total</p><p className="text-xl font-black font-mono">R$ {ordem.valorTotal.toFixed(2)}</p></div>
                 </div>
               </div>
             ))}
