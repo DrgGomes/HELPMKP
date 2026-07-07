@@ -13,6 +13,7 @@ import Custos from './telas/Custos';
 import Fornecedores from './telas/Fornecedores';
 import Financeiro from './telas/Financeiro';
 import CalculadoraRapida from './telas/CalculadoraRapida';
+import BackupManager from './telas/BackupManager';
 
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
@@ -134,6 +135,12 @@ export default function App() {
             <button onClick={() => { setTelaAtiva('ajustes_categorias'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'ajustes_categorias' ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <span className="text-lg group-hover:scale-110 transition-transform">🗂️</span><span>Pastas & Custos</span>
             </button>
+
+            {/* BOTÃO DE BACKUP INJETADO */}
+            <button onClick={() => { setTelaAtiva('backups'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'backups' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg group-hover:scale-110 transition-transform">🛡️</span><span>Segurança & Backup</span>
+            </button>
+
             <button onClick={() => { setTelaAtiva('configuracoes'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'configuracoes' ? 'bg-slate-700/50 text-white border border-slate-600' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
               <span className="text-lg group-hover:scale-110 transition-transform">⚙️</span><span>Conexões & Taxas</span>
             </button>
@@ -196,6 +203,10 @@ export default function App() {
             {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}
             {telaAtiva === 'ajustes_categorias' && <Custos custosPadrao={custosPadrao} categorias={categorias} categoriasDespesa={categoriasDespesa} />}
             {telaAtiva === 'perfil' && <Perfil />}
+            
+            {/* INJEÇÃO DO GERENCIADOR DE BACKUP AQUI */}
+            {telaAtiva === 'backups' && <BackupManager produtos={produtos} compras={compras} lancamentos={lancamentos} custosPadrao={custosPadrao} />}
+
             {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
           </div>
         </main>
