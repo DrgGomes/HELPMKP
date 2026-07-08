@@ -15,6 +15,7 @@ import Financeiro from './telas/Financeiro';
 import CalculadoraRapida from './telas/CalculadoraRapida';
 import BackupManager from './telas/BackupManager';
 import GaleriaMidia from './telas/GaleriaMidia';
+import CriadorAnuncio from './telas/CriadorAnuncio'; // IMPORT DO NOVO ATIVO
 
 export default function App() {
   const [isLogado, setIsLogado] = useState(false);
@@ -80,7 +81,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f4f7fb] flex font-sans text-slate-800 antialiased overflow-hidden selection:bg-blue-500/30">
       
-      {/* SIDEBAR */}
+      {/* SIDEBAR ULTRA PREMIUM */}
       <div className={`fixed inset-y-0 left-0 z-[110] w-72 bg-slate-950 text-white flex flex-col transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${menuAberto ? 'translate-x-0 shadow-[20px_0_50px_rgba(0,0,0,0.5)]' : '-translate-x-full'} border-r border-white/5`}>
         <div className="absolute top-0 left-0 w-full h-64 bg-gradient-to-b from-blue-600/10 to-transparent pointer-events-none"></div>
 
@@ -106,11 +107,15 @@ export default function App() {
           
           <div className="space-y-1">
             <p className="px-4 text-[10px] font-black text-slate-600 uppercase tracking-widest mb-3">Inteligência & Mídia</p>
-            <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'calculadora' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-              <div className="flex items-center gap-3"><span className="text-lg">🧮</span><span>Calculadora IA</span></div>
+            <button onClick={() => { setTelaAtiva('calculadora'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'calculadora' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg">🧮</span><span>Calculadora IA</span>
             </button>
-            <button onClick={() => { setTelaAtiva('galeria'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'galeria' ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
-              <div className="flex items-center gap-3"><span className="text-lg">📸</span><span>Galeria de Fotos</span></div>
+            <button onClick={() => { setTelaAtiva('criador_anuncio'); setMenuAberto(false); }} className={`w-full group flex items-center justify-between px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'criador_anuncio' ? 'bg-blue-600/20 text-blue-400 border border-blue-500/20' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <div className="flex items-center gap-3"><span className="text-lg">⚡</span><span>Criador Anúncio</span></div>
+              <span className="text-[8px] bg-blue-600 text-white px-1.5 py-0.5 rounded uppercase font-black tracking-wider">Massa</span>
+            </button>
+            <button onClick={() => { setTelaAtiva('galeria'); setMenuAberto(false); }} className={`w-full group flex items-center gap-3 px-4 py-3 rounded-2xl text-sm font-bold transition-all duration-300 ${telaAtiva === 'galeria' ? 'bg-white/10 text-white border border-white/5' : 'text-slate-400 hover:text-white hover:bg-white/5'}`}>
+              <span className="text-lg">📸</span><span>Galeria de Fotos</span>
             </button>
           </div>
 
@@ -178,13 +183,13 @@ export default function App() {
           </div>
         </header>
 
-        {/* TASKBAR NATIVA MOBILE */}
+        {/* TASKBAR MOBILE RESPONSIVA */}
         <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200 z-50 flex items-end justify-around px-2 pb-6 pt-3 shadow-[0_-10px_40px_rgba(0,0,0,0.08)]">
           <button onClick={() => setTelaAtiva('dashboard')} className={`flex flex-col items-center gap-1 p-2 ${telaAtiva === 'dashboard' ? 'text-indigo-600' : 'text-slate-400'}`}>
             <span className="text-xl">📊</span><span className="text-[9px] font-black uppercase">Início</span>
           </button>
-          <button onClick={() => setTelaAtiva('galeria')} className={`flex flex-col items-center gap-1 p-2 ${telaAtiva === 'galeria' ? 'text-indigo-600' : 'text-slate-400'}`}>
-            <span className="text-xl">📸</span><span className="text-[9px] font-black uppercase">Mídias</span>
+          <button onClick={() => setTelaAtiva('criador_anuncio')} className={`flex flex-col items-center gap-1 p-2 ${telaAtiva === 'criador_anuncio' ? 'text-indigo-600' : 'text-slate-400'}`}>
+            <span className="text-xl">⚡</span><span className="text-[9px] font-black uppercase">Anúncio AI</span>
           </button>
           <button onClick={() => setTelaAtiva('fornecedores')} className="relative -top-6 flex flex-col items-center gap-1">
             <div className={`w-14 h-14 rounded-full flex items-center justify-center shadow-xl ${telaAtiva === 'fornecedores' ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-white'}`}><span className="text-2xl">🚚</span></div>
@@ -211,6 +216,9 @@ export default function App() {
             {telaAtiva === 'backups' && <BackupManager produtos={produtos} compras={compras} lancamentos={lancamentos} custosPadrao={custosPadrao} />}
             {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
             {telaAtiva === 'galeria' && <GaleriaMidia midias={midias} />}
+            
+            {/* INJEÇÃO DO NOVO ATIVO NO CORPO DO CORE DE ATIVOS */}
+            {telaAtiva === 'criador_anuncio' && <CriadorAnuncio produtos={produtos} plataformas={plataformas} />}
           </div>
         </main>
       </div>
