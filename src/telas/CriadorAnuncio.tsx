@@ -7,8 +7,8 @@ interface CriadorAnuncioProps {
 }
 
 export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncioProps) {
-  // Chave oficial do Gemini integrada com sucesso
-  const GEMINI_API_KEY = 'AIzaSyBf5zVGqxSCxtKomh9rqsE_Rjt5WGPH4bY';
+  // 🚨 COLE AQUI A SUA NOVA CHAVE GERADA (Em um Novo Projeto)
+  const GEMINI_API_KEY = 'AQ.Ab8RN6I4-oxa04vJwC_ptYCS3FpTrfq4VEaAB8NjPm76XIE3Lg';
 
   const [produtoId, setProdutoId] = useState('');
   const [analisando, setAnalisando] = useState(false);
@@ -135,20 +135,19 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         generationConfig: { temperature: 0.8 }
       };
 
-      // 3. ROTEADOR AUTOMÁTICO DE MODELOS (Fallback Enterprise)
-      // Ajusta os modelos dependendo se tem imagem ou não para evitar erros 400
+      // 3. ROTEADOR AUTOMÁTICO DE MODELOS COM DIAGNÓSTICO (RAIO-X)
       const modelosParaTestar = base64Image 
         ? ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-001', 'gemini-1.0-pro-vision-latest']
         : ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-001', 'gemini-1.0-pro'];
 
       let responseOk = null;
+      let ultimoErroGoogle = "Erro Desconhecido";
 
       for (const modelo of modelosParaTestar) {
         setLogAnalyse(`⚙️ Testando conexão com motor de IA: ${modelo}...`);
         
         const payload: any = JSON.parse(JSON.stringify(bodyBase));
         
-        // Modelos 1.5 suportam trava de JSON, o 1.0 não. Isso evita erro "not supported for generateContent".
         if (modelo.includes('1.5')) {
           payload.generationConfig.responseMimeType = "application/json";
         }
@@ -163,18 +162,21 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
           if (res.ok) {
             responseOk = res;
             setLogAnalyse(`✅ Motor ${modelo} ancorado com sucesso! Gerando copy...`);
-            break; // Se deu certo, para o loop de testes
+            break; 
           } else {
             const erroData = await res.json();
-            console.warn(`Motor ${modelo} recusado pela sua API Key:`, erroData);
+            // Captura o erro oficial do Google para te mostrar na tela
+            ultimoErroGoogle = erroData.error?.message || JSON.stringify(erroData);
+            console.warn(`Motor ${modelo} recusado:`, erroData);
           }
-        } catch (e) {
+        } catch (e: any) {
+          ultimoErroGoogle = e.message;
           console.warn(`Falha na requisição ao motor ${modelo}`, e);
         }
       }
 
       if (!responseOk) {
-        throw new Error("Nenhum motor de Inteligência Artificial liberou acesso. Verifique no painel do Google Cloud se a 'Generative Language API' está ativada.");
+        throw new Error(`O Google recusou a sua Chave de API.\n\nMotivo Oficial do Google:\n"${ultimoErroGoogle}"\n\nGere uma nova Chave selecionando "Create API key in new project".`);
       }
 
       const data = await responseOk.json();
@@ -182,7 +184,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
       
       setLogAnalyse("✅ Renderizando resultados na tela...");
 
-      // 4. Limpeza agressiva: Garante que a IA não quebre o painel mesmo que mande Markdown sujo
       textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
 
       const jsonResposta = JSON.parse(textoResposta);
@@ -196,7 +197,7 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
 
     } catch (error: any) {
       console.error("Erro no processamento da Inteligência Artificial:", error);
-      alert(`Falha na IA: ${error.message}\n\nTente novamente ou gere uma nova Chave de API no AI Studio.`);
+      alert(`🤖 Falha de Conexão IA:\n\n${error.message}`);
     } finally {
       setAnalisando(false);
     }
@@ -205,7 +206,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       
-      {/* HEADER PRINCIPAL */}
       <header className="bg-white p-6 sm:p-8 rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-indigo-500/10 to-blue-500/10 rounded-full blur-3xl -z-10"></div>
         <div>
@@ -216,7 +216,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         </div>
       </header>
 
-      {/* SELETOR DE ATIVO */}
       <div className="bg-white p-5 sm:p-6 rounded-2xl shadow-sm border border-slate-200 max-w-xl">
         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Escolha o Produto para Otimizar</label>
         <div className="flex flex-col sm:flex-row gap-3">
@@ -239,7 +238,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         </div>
       </div>
 
-      {/* AMBIENTE DE ANÁLISE / LOADING AGENTE */}
       {analisando && (
         <div className="bg-slate-900 text-emerald-400 font-mono p-6 rounded-2xl border border-slate-800 shadow-inner space-y-3 max-w-2xl animate-pulse">
           <div className="flex items-center gap-2 text-xs font-black">
@@ -250,14 +248,11 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         </div>
       )}
 
-      {/* FORMULÁRIO DE RESULTADOS COMPATÍVEL COM PC E TABLET */}
       {gerado && produtoSelecionado && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in">
           
-          {/* PAINEL ESQUERDO: MÍDIA E PRECIFICAÇÃO DINÂMICA VIVA */}
           <div className="xl:col-span-4 space-y-6">
             
-            {/* CARD DO PRODUTO */}
             <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm text-center">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Foto Ativa do Produto</p>
               <div className="w-full aspect-square bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-center overflow-hidden mb-4 p-2">
@@ -273,7 +268,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
               </p>
             </div>
 
-            {/* MATRIZ DE PREÇO VIVO RECALCULÁVEL */}
             <div className="bg-slate-900 p-6 rounded-3xl shadow-xl border border-slate-800 space-y-4">
               <div>
                 <h4 className="font-black text-white text-sm flex items-center gap-2">
@@ -303,7 +297,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
                         </span>
                       </div>
 
-                      {/* INPUTS DE TAXAS EDITÁVEIS NA HORA */}
                       <div className="grid grid-cols-3 gap-2">
                         <div>
                           <label className="block text-[8px] font-black text-slate-500 uppercase tracking-wider mb-1">Comissão (%)</label>
@@ -350,17 +343,14 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
 
           </div>
 
-          {/* PAINEL DIREITO: ESTÚDIO DE INTELIGÊNCIA DE TEXTOS (TÍTULOS E DESCRIÇÕES) */}
           <div className="xl:col-span-8 space-y-8">
             
-            {/* SEÇÃO 1: GERADOR DE TÍTULOS */}
             <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-6">
               <h3 className="font-black text-xl text-slate-800 border-b border-slate-100 pb-3 flex items-center gap-2">
                 <span>🔤</span> Títulos Estratégicos Gerados pela IA
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* MERCADO LIVRE (60 CHARS) */}
                 <div className="space-y-3">
                   <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest flex items-center gap-1">
                     <span>🤝</span> Mercado Livre (Máx 60 Caracteres)
@@ -376,7 +366,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
                   ))}
                 </div>
 
-                {/* OUTRAS PLATAFORMAS (100 CHARS) */}
                 <div className="space-y-3">
                   <p className="text-[10px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-1">
                     <span>🌐</span> Demais Canais (Máx 100 Caracteres)
@@ -394,7 +383,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
               </div>
             </div>
 
-            {/* SEÇÃO 2: DESCRIÇÕES MERCADO LIVRE */}
             <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
                 <span>📝</span> Descrições SEO Mercado Livre (Calda Longa)
@@ -414,7 +402,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
               </div>
             </div>
 
-            {/* SEÇÃO 3: DESCRIÇÕES DEMAIS PLATAFORMAS */}
             <div className="bg-white p-5 sm:p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
                 <span>🛍️</span> Descrições Omnichannel (Canais Gerais)
