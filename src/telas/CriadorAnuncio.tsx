@@ -69,11 +69,11 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
     setGerado(false);
     
     try {
-      setLogAnalyse("🔬 Inicializando módulo Vision Agent 5.0...");
+      setLogAnalyse("🔬 Inicializando módulo Vision Agent...");
       let base64Image = null;
       let mimeType = 'image/jpeg';
 
-      // 1. Tenta baixar a imagem do produto e converter para Base64 para a IA "enxergar"
+      // 1. Tenta baixar a imagem do produto e converter para Base64
       if (produtoSelecionado.foto) {
         setLogAnalyse("📸 Escaneando pixels e texturas da imagem anexada...");
         try {
@@ -88,13 +88,13 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
             reader.readAsDataURL(blob);
           });
         } catch (e) {
-          console.warn("Servidor da imagem bloqueou a leitura direta. A IA usará apenas os dados em texto do produto.");
+          console.warn("Servidor da imagem bloqueou a leitura direta (CORS). A IA usará apenas os textos.");
         }
       }
 
-      setLogAnalyse("🧠 Conectando aos servidores do Google Gemini AI...");
+      setLogAnalyse("🧠 Conectando ao Google Cloud AI...");
 
-      // 2. Montando o Prompt Estratégico de Engenharia (System Prompt)
+      // 2. Montando o Prompt Estratégico
       const promptText = `
         Você é o "Copilot", um especialista nível sênior em E-commerce, SEO e Copywriting voltado para conversão.
         
@@ -105,13 +105,13 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
 
         Instruções:
         1. Se uma imagem foi enviada com este prompt, extraia as características visuais (cor, estilo, formato, detalhes) e incorpore nos textos.
-        2. NÃO use nomes de marcas famosas ou protegidas por direitos autorais (ex: Nike, Apple, etc), use termos genéricos como "Estilo", "Tipo", "Premium", "Modelo".
+        2. NÃO use nomes de marcas famosas ou protegidas por direitos autorais, use termos genéricos como "Estilo", "Tipo", "Premium", "Modelo".
         3. Crie 4 opções de Títulos focados no Mercado Livre (Máximo absoluto de 60 caracteres).
         4. Crie 4 opções de Títulos focados em Shopee/Nuvemshop (Máximo de 100 caracteres).
         5. Crie 4 Descrições persuasivas para o Mercado Livre (Foco em entrega rápida/Full, estrutura técnica, palavras-chave de cauda longa, segurança na compra).
         6. Crie 4 Descrições persuasivas para outros canais (Foco em benefícios, sensação ao usar, exclusividade, escassez).
         
-        Você deve OBRIGATORIAMENTE retornar APENAS um objeto JSON válido, sem NENHUMA formatação Markdown (\`\`\`json) e sem explicações. A estrutura do JSON deve ser exatamente esta:
+        Você deve OBRIGATORIAMENTE retornar APENAS um objeto JSON válido, sem formatação Markdown (\`\`\`json) e sem explicações. Estrutura EXATA:
         {
           "titulosML": ["titulo 1", "titulo 2", "titulo 3", "titulo 4"],
           "titulosGerais": ["titulo 1", "titulo 2", "titulo 3", "titulo 4"],
@@ -120,7 +120,6 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         }
       `;
 
-      // 3. Montando a estrutura de envio nativa da API REST do Gemini 1.5 Flash
       const parts: any[] = [{ text: promptText }];
       if (base64Image) {
         parts.push({
@@ -131,34 +130,61 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         });
       }
 
-      const body = {
+      const bodyBase = {
         contents: [{ parts }],
-        generationConfig: {
-          temperature: 0.8, // Temperatura média para criatividade comercial controlada
-          responseMimeType: "application/json", // Trava a IA para retornar JSON perfeito sempre
-        }
+        generationConfig: { temperature: 0.8 }
       };
 
-      setLogAnalyse("⚙️ Processando redes neurais e gerando matrizes de copy...");
+      // 3. ROTEADOR AUTOMÁTICO DE MODELOS (Fallback Enterprise)
+      // Ajusta os modelos dependendo se tem imagem ou não para evitar erros 400
+      const modelosParaTestar = base64Image 
+        ? ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-001', 'gemini-1.0-pro-vision-latest']
+        : ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.5-flash-001', 'gemini-1.0-pro'];
 
-      // ATUALIZAÇÃO: Utilizando a nomenclatura "-latest" exigida pelo Google
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
+      let responseOk = null;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || "Falha na comunicação com o Google Gemini");
+      for (const modelo of modelosParaTestar) {
+        setLogAnalyse(`⚙️ Testando conexão com motor de IA: ${modelo}...`);
+        
+        const payload: any = JSON.parse(JSON.stringify(bodyBase));
+        
+        // Modelos 1.5 suportam trava de JSON, o 1.0 não. Isso evita erro "not supported for generateContent".
+        if (modelo.includes('1.5')) {
+          payload.generationConfig.responseMimeType = "application/json";
+        }
+
+        try {
+          const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+
+          if (res.ok) {
+            responseOk = res;
+            setLogAnalyse(`✅ Motor ${modelo} ancorado com sucesso! Gerando copy...`);
+            break; // Se deu certo, para o loop de testes
+          } else {
+            const erroData = await res.json();
+            console.warn(`Motor ${modelo} recusado pela sua API Key:`, erroData);
+          }
+        } catch (e) {
+          console.warn(`Falha na requisição ao motor ${modelo}`, e);
+        }
       }
 
-      const data = await response.json();
-      const textoResposta = data.candidates[0].content.parts[0].text;
-      
-      setLogAnalyse("✅ Sucesso! Renderizando resultados na tela...");
+      if (!responseOk) {
+        throw new Error("Nenhum motor de Inteligência Artificial liberou acesso. Verifique no painel do Google Cloud se a 'Generative Language API' está ativada.");
+      }
 
-      // 4. Injetando a resposta da IA direto na interface do sistema
+      const data = await responseOk.json();
+      let textoResposta = data.candidates[0].content.parts[0].text;
+      
+      setLogAnalyse("✅ Renderizando resultados na tela...");
+
+      // 4. Limpeza agressiva: Garante que a IA não quebre o painel mesmo que mande Markdown sujo
+      textoResposta = textoResposta.replace(/```json/gi, '').replace(/```/g, '').trim();
+
       const jsonResposta = JSON.parse(textoResposta);
 
       setTitulosML(jsonResposta.titulosML || []);
@@ -170,7 +196,7 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
 
     } catch (error: any) {
       console.error("Erro no processamento da Inteligência Artificial:", error);
-      alert(`Falha na IA: ${error.message}\n\nVerifique se o produto possui informações ou tente novamente.`);
+      alert(`Falha na IA: ${error.message}\n\nTente novamente ou gere uma nova Chave de API no AI Studio.`);
     } finally {
       setAnalisando(false);
     }
@@ -218,7 +244,7 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
         <div className="bg-slate-900 text-emerald-400 font-mono p-6 rounded-2xl border border-slate-800 shadow-inner space-y-3 max-w-2xl animate-pulse">
           <div className="flex items-center gap-2 text-xs font-black">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-            <span>AGENTE GEMINI 1.5 ATIVO:</span>
+            <span>AGENTE AI ATIVO:</span>
           </div>
           <p className="text-sm font-bold text-slate-200">{logAnalise}</p>
         </div>
