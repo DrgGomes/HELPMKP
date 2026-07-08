@@ -141,7 +141,8 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
 
       setLogAnalyse("⚙️ Processando redes neurais e gerando matrizes de copy...");
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      // ATUALIZAÇÃO: Utilizando a nomenclatura "-latest" exigida pelo Google
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${GEMINI_API_KEY}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
