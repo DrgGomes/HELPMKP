@@ -96,11 +96,12 @@ export interface LancamentoFinanceiro {
   grupoRecorrenciaId?: string; 
 }
 
-// --- NOVA ESTRUTURA PARA A GALERIA DE MÍDIAS ---
+// --- CONTRATO DE MÍDIA COMPATÍVEL COM MINIATURAS COMPACTAS ---
 export interface Midia {
   id: string;
   titulo: string;
   url: string;
+  url_thumb: string;
   album: string;
   dataCriacao: string;
 }
