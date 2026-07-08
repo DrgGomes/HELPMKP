@@ -8,7 +8,7 @@ interface CriadorAnuncioProps {
 
 export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncioProps) {
   // 🚨 COLE AQUI A SUA NOVA CHAVE GERADA (Em um Novo Projeto)
-  const GEMINI_API_KEY = 'AQ.Ab8RN6I4-oxa04vJwC_ptYCS3FpTrfq4VEaAB8NjPm76XIE3Lg';
+  const GEMINI_API_KEY = 'AQ.Ab8RN6IYlJhxJbTWD2Mo9deVsyO3O3FG-tKf_NrFfHMHKA6OYA';
 
   const [produtoId, setProdutoId] = useState('');
   const [analisando, setAnalisando] = useState(false);
