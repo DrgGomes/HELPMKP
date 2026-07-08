@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Produto, Plataforma } from '../types';
 
 interface CriadorAnuncioProps {
@@ -302,7 +302,7 @@ export default function CriadorAnuncio({ produtos, plataformas }: CriadorAnuncio
                         <p className="font-bold text-xs text-slate-800 break-words">{t}</p>
                         <span className="text-[9px] font-mono font-bold text-slate-400">{t.length} chars</span>
                       </div>
-                      <button type="button" onClick={() => copiarLink(t)} className="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-900 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider shadow-sm shrink-0 transition-colors">Copiar</button>
+                      <button type="button" onClick={() => copiarTexto(t)} className="px-2.5 py-1.5 bg-white border border-slate-300 hover:bg-slate-900 hover:text-white rounded-lg text-[10px] font-black uppercase tracking-wider shadow-sm shrink-0 transition-colors">Copiar</button>
                     </div>
                   ))}
                 </div>
