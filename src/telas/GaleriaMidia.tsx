@@ -315,7 +315,7 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
           <div className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4 justify-between">
             <div className="flex flex-col sm:flex-row gap-4 flex-1">
               <div className="flex-1">
-                <input type="text" placeholder="🔍 Buscar imagem..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none" />
+                <input type="text" placeholder="🔍 Buscar imagem pelo nome..." value={busca} onChange={(e) => setBusca(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold outline-none" />
               </div>
               <div className="sm:w-64">
                 <select value={filtroAlbum} onChange={(e) => setFiltroAlbum(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold text-slate-700 outline-none">
@@ -336,8 +336,12 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                 <span className="text-sm font-black text-indigo-200 bg-black/20 px-3 py-1.5 rounded-lg">{selecionados.length} Selecionadas</span>
               </div>
               <div className="flex items-center gap-3 w-full md:w-auto">
-                <button onClick={excluirLoteSelecionadas} className="px-5 py-2.5 bg-rose-500 text-white font-black uppercase rounded-xl text-xs">🗑️ Excluir</button>
-                <button onClick={baixarLoteSelecionadas} className="px-6 py-2.5 bg-blue-500 text-white font-black uppercase rounded-xl text-xs shadow-lg">⬇️ Baixar Lote</button>
+                <button onClick={excluirLoteSelecionadas} disabled={processandoLote || selecionados.length === 0} className="px-5 py-2.5 bg-rose-500 text-white font-black uppercase rounded-xl text-xs disabled:opacity-50">
+                  {processandoLote ? '⏳' : '🗑️'} Excluir
+                </button>
+                <button onClick={baixarLoteSelecionadas} disabled={processandoLote || selecionados.length === 0} className="px-6 py-2.5 bg-blue-500 text-white font-black uppercase rounded-xl text-xs shadow-lg disabled:opacity-50">
+                  {processandoLote ? '⏳ Baixando...' : '⬇️ Baixar Lote'}
+                </button>
               </div>
             </div>
           )}
@@ -369,14 +373,12 @@ export default function GaleriaMidia({ midias }: GaleriaMidiaProps) {
                     )}
 
                     <div className="flex-1 relative overflow-hidden bg-slate-100">
-                      {/* MOTOR PREMIUM: Puxa o url_thumb (leve) se existir, caindo para a original via fallback em imagens antigas */}
                       <img 
                         src={midia.url_thumb || midia.url} 
                         alt={midia.titulo} 
                         loading="lazy" 
                         className={`w-full h-full object-cover transition-transform duration-500 ${!modoSelecao ? 'group-hover:scale-110' : ''}`}
                         onError={(e) => {
-                          // TRATAMENTO ANTIQUEBRA: Substitui links quebrados por um placeholder estável em SVG cinza limpo
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100' height='100' fill='%23f1f5f9'/><text x='50%27' y='50%27' font-size='12' font-family='sans-serif' font-weight='bold' fill='%2394a3b8' text-anchor='middle' dy='.3em'>FOTO INDISPONÍVEL</text></svg>";
                         }}
