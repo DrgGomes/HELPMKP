@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Search, Trash2, Edit3, Save, RefreshCw, Package, X, TrendingUp, Image as ImageIcon } from 'lucide-react';
+import { Plus, Search, Trash2, Edit3, Save, RefreshCw, Package, X } from 'lucide-react';
 import { supabase } from '../supabase';
 import type { CustoPadrao, Categoria, CustoAdicional } from '../types';
 
