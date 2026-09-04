@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
-    "firebase": "^10.12.2",
+    "@supabase/supabase-js": "^2.115.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
