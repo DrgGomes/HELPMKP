@@ -90,9 +90,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       const promptText = `Você é um assistente financeiro de um ERP. Extraia: "descricao", "valor" (numero float), "data" (YYYY-MM-DD) e "categoria" (sugira uma pasta contábil genérica). Retorne EXATAMENTE UM JSON.`;
       const result = await model.generateContent([promptText, imagePart]);
       const responseText = result.response.text();
-      const cleanedText = responseText.split('
-```json').join('').split('
-```').join('').trim();
+      const cleanedText = responseText.split(String.fromCharCode(96, 96, 96) + 'json').join('').split(String.fromCharCode(96, 96, 96)).join('').trim();
       const dadosExtraidos = JSON.parse(cleanedText);
       setDescricao(dadosExtraidos.descricao || 'Despesa Lida por IA');
       setValor(dadosExtraidos.valor ? dadosExtraidos.valor.toString() : '');
