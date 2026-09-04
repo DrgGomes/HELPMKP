@@ -4,9 +4,10 @@ import type { Plataforma } from '../types';
 
 interface ConfiguracoesProps {
   plataformas: Plataforma[];
+  setPlataformas?: (v: Plataforma[]) => void;
 }
 
-export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
+export default function Configuracoes({ plataformas, setPlataformas }: ConfiguracoesProps) {
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
   const [nome, setNome] = useState('');
   const [comissao, setComissao] = useState('');
@@ -14,20 +15,19 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
   const [taxaFixa, setTaxaFixa] = useState('');
   const [freteFixo, setFreteFixo] = useState('');
   const [logo, setLogo] = useState('');
-  const [fazendoBackup, setFazendoBackup] = useState(false);
-  const [restaurando, setRestaurando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
   const getUserId = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     return user?.id || null;
   };
 
-  // --- LÓGICA DE MARKETPLACES ---
   const lidarSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome) return;
     const userId = await getUserId();
     if (!userId) return;
+    setSalvando(true);
 
     const dados = {
       nome,
@@ -40,17 +40,32 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
 
     try {
       if (idEdicao) {
-        const { error } = await supabase.from('plataformas').update(dados).eq('id', idEdicao).eq('user_id', userId);
+        const { data, error } = await supabase.from('plataformas').update(dados).eq('id', idEdicao).eq('user_id', userId).select();
         if (error) throw error;
+        if (data && setPlataformas) {
+          setPlataformas(plataformas.map(p => p.id === idEdicao ? {
+            ...p, nome: data[0].nome, logo: data[0].logo, comissao: Number(data[0].comissao),
+            comissaoAfiliado: Number(data[0].comissao_afiliado), taxaFixa: Number(data[0].taxa_fixa), freteFixo: Number(data[0].frete_fixo)
+          } : p));
+        }
       } else {
-        const { error } = await supabase.from('plataformas').insert({ ...dados, user_id: userId });
+        const { data, error } = await supabase.from('plataformas').insert({ ...dados, user_id: userId }).select();
         if (error) throw error;
+        if (data && setPlataformas) {
+          const nova: Plataforma = {
+            id: data[0].id, nome: data[0].nome, logo: data[0].logo,
+            comissao: Number(data[0].comissao), comissaoAfiliado: Number(data[0].comissao_afiliado),
+            taxaFixa: Number(data[0].taxa_fixa), freteFixo: Number(data[0].frete_fixo)
+          };
+          setPlataformas([...plataformas, nova]);
+        }
       }
       limparFormulario();
     } catch (error) {
       console.error(error);
       alert('Erro ao salvar a plataforma.');
     }
+    setSalvando(false);
   };
 
   const iniciarEdicao = (plat: Plataforma) => {
@@ -67,27 +82,27 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
 
   const excluirPlataforma = async (id: string) => {
     const userId = await getUserId();
-    if (userId && window.confirm("Excluir esta plataforma?")) {
+    if (!userId || !window.confirm("Excluir esta plataforma?")) return;
+    try {
       const { error } = await supabase.from('plataformas').delete().eq('id', id).eq('user_id', userId);
-      if (error) { console.error(error); alert('Erro ao excluir.'); }
+      if (error) throw error;
+      if (setPlataformas) setPlataformas(plataformas.filter(p => p.id !== id));
+    } catch (error) {
+      console.error(error); alert('Erro ao excluir.');
     }
   };
 
-  // --- O COFRE DE DADOS: GERAR BACKUP (EXPORTAR) ---
   const gerarBackup = async () => {
     const userId = await getUserId();
     if (!userId) return;
-    setFazendoBackup(true);
     try {
       const tabelas = ['plataformas', 'produtos', 'custos_padrao', 'categorias', 'categorias_despesas', 'fornecedores', 'lancamentos', 'compras', 'midias'];
       const dadosBackup: Record<string, any[]> = {};
-
       for (const tabela of tabelas) {
         const { data, error } = await supabase.from(tabela).select('*').eq('user_id', userId);
         if (error) throw error;
         dadosBackup[tabela] = data || [];
       }
-
       const backupFinal = { timestamp: new Date().toISOString(), dados: dadosBackup };
       const blob = new Blob([JSON.stringify(backupFinal, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -102,10 +117,8 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
       console.error(error);
       alert("Erro ao gerar o backup.");
     }
-    setFazendoBackup(false);
   };
 
-  // --- O COFRE DE DADOS: RESTAURAR BACKUP (IMPORTAR) ---
   const restaurarBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -115,7 +128,6 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
     }
     const userId = await getUserId();
     if (!userId) return;
-    setRestaurando(true);
     try {
       const leitor = new FileReader();
       leitor.onload = async (e) => {
@@ -123,7 +135,6 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
           const conteudo = e.target?.result as string;
           const backupRestaurado = JSON.parse(conteudo);
           if (!backupRestaurado.dados) throw new Error("Arquivo de backup inválido.");
-
           let operacoes = 0;
           for (const [nomeTabela, itens] of Object.entries(backupRestaurado.dados)) {
             const arrItens = itens as any[];
@@ -136,7 +147,6 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
             if (error) console.warn(`Erro ao restaurar tabela ${nomeTabela}:`, error.message);
             else operacoes += itensComUserId.length;
           }
-
           if (operacoes > 0) {
             alert(`✅ Restauração Concluída! ${operacoes} registros foram salvos. Recarregue a página.`);
             window.location.reload();
@@ -147,13 +157,11 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
           console.error(err);
           alert("Erro ao ler o arquivo. Tem certeza que é um backup do HelpMkp?");
         }
-        setRestaurando(false);
       };
       leitor.readAsText(file);
     } catch (error) {
       console.error(error);
       alert("Erro catastrófico ao restaurar.");
-      setRestaurando(false);
     }
   };
 
@@ -164,15 +172,15 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
         <p className="text-slate-500 mt-1">Configure suas taxas de venda e proteja os dados do seu sistema.</p>
       </header>
 
-      {/* --- MÓDULO DO COFRE DE DADOS --- */}
+      {/* COFRE DE DADOS */}
       <div className="bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-800 text-white flex flex-col lg:flex-row gap-8 items-center justify-between">
         <div className="lg:w-1/2">
           <h3 className="text-2xl font-black text-emerald-400 mb-2 flex items-center gap-2"><span>🛡️</span> Cofre de Dados (Backup)</h3>
           <p className="text-slate-400 text-sm leading-relaxed mb-4">
-            Baixe uma cópia completa de segurança de <strong>todos</strong> os seus produtos, finanças, compras e fornecedores. Faça isso no final do dia ou antes de testar alterações grandes.
+            Baixe uma cópia completa de segurança de <strong>todos</strong> os seus produtos, finanças, compras e fornecedores.
           </p>
-          <button onClick={gerarBackup} disabled={fazendoBackup} className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-slate-900 font-black rounded-xl transition-all shadow-lg shadow-emerald-600/30 disabled:opacity-50">
-            {fazendoBackup ? 'Empacotando Cofre...' : '💾 Baixar Cópia de Segurança (.json)'}
+          <button onClick={gerarBackup} className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-slate-900 font-black rounded-xl transition-all shadow-lg shadow-emerald-600/30">
+            💾 Baixar Cópia de Segurança (.json)
           </button>
         </div>
         <div className="w-px h-32 bg-slate-800 hidden lg:block"></div>
@@ -180,21 +188,22 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
           <div className="absolute top-0 left-0 w-2 h-full bg-rose-600"></div>
           <h4 className="font-bold text-rose-500 mb-2 uppercase tracking-widest text-xs">Zona de Risco - Restaurar</h4>
           <p className="text-slate-500 text-xs mb-4">Subir um arquivo de backup irá sobrescrever as informações atuais do sistema. Use com extrema cautela.</p>
-          <label className={`block text-center px-6 py-3 border-2 border-dashed border-slate-700 hover:border-rose-500 rounded-xl cursor-pointer transition-colors ${restaurando ? 'opacity-50 pointer-events-none' : ''}`}>
-            <span className="font-bold text-slate-300">{restaurando ? 'Restaurando o sistema...' : '📂 Clique para Subir Arquivo de Backup'}</span>
-            <input type="file" accept=".json" onChange={restaurarBackup} className="hidden" disabled={restaurando} />
+          <label className="block text-center px-6 py-3 border-2 border-dashed border-slate-700 hover:border-rose-500 rounded-xl cursor-pointer transition-colors">
+            <span className="font-bold text-slate-300">📂 Clique para Subir Arquivo de Backup</span>
+            <input type="file" accept=".json" onChange={restaurarBackup} className="hidden" />
           </label>
         </div>
       </div>
 
-      {/* --- MÓDULO DE PLATAFORMAS --- */}
+      {/* PLATAFORMAS */}
       <div className="pt-4 border-t border-slate-200">
         <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><span>🛍️</span> Canais de Venda (Marketplaces)</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* FORM */}
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
             <h3 className="font-bold text-slate-800 mb-4">{idEdicao ? 'Editar' : 'Nova'} Plataforma</h3>
             <form onSubmit={lidarSalvar} className="space-y-4">
-              <input type="text" required placeholder="Nome (Ex: Mercado Livre)" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none" />
+              <input type="text" required placeholder="Nome (Ex: Mercado Livre)" value={nome} onChange={(e) => setNome(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-blue-400" />
               <input type="url" placeholder="URL da Logo (Opcional)" value={logo} onChange={(e) => setLogo(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none text-xs" />
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Comissão Base (%)</label><input type="number" step="0.01" value={comissao} onChange={(e) => setComissao(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none" /></div>
@@ -205,13 +214,15 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
                 <div><label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Frete Fixo (R$)</label><input type="number" step="0.01" value={freteFixo} onChange={(e) => setFreteFixo(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-black outline-none text-rose-600" /></div>
               </div>
               <div className="flex gap-2">
-                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-black shadow-md">{idEdicao ? 'Salvar' : 'Adicionar'}</button>
+                <button type="submit" disabled={salvando} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3.5 rounded-xl font-black shadow-md disabled:opacity-50">{salvando ? 'Salvando...' : (idEdicao ? 'Salvar' : 'Adicionar')}</button>
                 {idEdicao && <button type="button" onClick={limparFormulario} className="px-4 bg-slate-200 text-slate-700 rounded-xl font-bold">Cancelar</button>}
               </div>
             </form>
           </div>
+
+          {/* LISTA */}
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {plataformas.length === 0 ? <div className="sm:col-span-2 lg:col-span-3 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500 font-bold">Nenhum canal de venda cadastrado.</div> : (
+            {plataformas.length === 0 ? <div className="sm:col-span-2 lg:col-span-3 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-400 font-bold">Nenhum canal de venda cadastrado.</div> : (
               plataformas.map(plat => (
                 <div key={plat.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm relative group flex flex-col">
                   <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 flex gap-1 transition-opacity">
