@@ -243,9 +243,9 @@ export default function App() {
             {telaAtiva === 'calculadora' && <CalculadoraRapida plataformas={plataformas} />}
             {telaAtiva === 'financeiro' && <Financeiro lancamentos={lancamentos} fornecedores={fornecedores} compras={compras} categoriasDespesa={categoriasDespesa} />}
             {telaAtiva === 'fornecedores' && <Fornecedores fornecedores={fornecedores} produtos={produtos} compras={compras} />}
-            {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos />}
+            {(telaAtiva === 'produtos_lista' || telaAtiva === 'produto_cadastro') && <Produtos custosPadrao={custosPadrao} categorias={categorias} />}
             {telaAtiva === 'configuracoes' && <Configuracoes plataformas={plataformas} />}
-            {telaAtiva === 'ajustes_categorias' && <Custos custosPadrao={custosPadrao} categorias={categorias} categoriasDespesa={categoriasDespesa} />}
+            {telaAtiva === 'ajustes_categorias' && <Custos custosPadrao={custosPadrao} categorias={categorias} categoriasDespesa={categoriasDespesa} setCustosPadrao={setCustosPadrao} setCategorias={setCategorias} setCategoriasDespesa={setCategoriasDespesa} />}
             {telaAtiva === 'perfil' && <Perfil />}
             {telaAtiva === 'backups' && <BackupManager produtos={produtos} compras={compras} lancamentos={lancamentos} custosPadrao={custosPadrao} />}
             {telaAtiva === 'criador_kit' && <CriadorKit produtosDisponiveis={produtos} setTelaAtiva={setTelaAtiva} />}
