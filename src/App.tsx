@@ -6,7 +6,7 @@ import type { Produto, Plataforma, CustoPadrao, Categoria, CategoriaDespesa, For
 import Login from './telas/Login';
 import Dashboard from './telas/Dashboard';
 import Configuracoes from './telas/Configuracoes';
-import Produtos from './telas/Produtos';
+import { Produtos } from './telas/Produtos';
 import Perfil from './telas/Perfil';
 import CriadorKit from './telas/CriadorKit';
 import Custos from './telas/Custos';
