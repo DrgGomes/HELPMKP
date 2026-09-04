@@ -6,12 +6,9 @@ import {
   Edit3, 
   Save, 
   RefreshCw, 
-  DollarSign, 
   Package, 
-  Tag, 
   X, 
   TrendingUp, 
-  AlertCircle,
   Image as ImageIcon
 } from 'lucide-react';
 import { supabase } from '../supabase'; // Instância do cliente Supabase

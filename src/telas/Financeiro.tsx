@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { doc, addDoc, collection, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { supabase } from '../supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { LancamentoFinanceiro, Compra, Fornecedor, CategoriaDespesa } from '../types';
 
@@ -13,52 +12,49 @@ interface FinanceiroProps {
 
 export default function Financeiro({ lancamentos, compras, fornecedores, categoriasDespesa }: FinanceiroProps) {
   const [abaAtiva, setAbaAtiva] = useState<'caixa' | 'fornecedores' | 'calendario'>('caixa');
-
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
   const [tipo, setTipo] = useState<'receita' | 'despesa'>('despesa');
   const [descricao, setDescricao] = useState('');
   const [valor, setValor] = useState('');
   const [dataLancamento, setDataLancamento] = useState(new Date().toISOString().split('T')[0]);
   const [dataVencimento, setDataVencimento] = useState(new Date().toISOString().split('T')[0]);
-  const [categoria, setCategoria] = useState(''); 
-  const [fornSelecionado, setFornSelecionado] = useState(''); 
-
+  const [categoria, setCategoria] = useState('');
+  const [fornSelecionado, setFornSelecionado] = useState('');
   const [isRecorrente, setIsRecorrente] = useState(false);
   const [mesesRepetir, setMesesRepetir] = useState('12');
   const [processandoIA, setProcessandoIA] = useState(false);
-
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecionados, setSelecionados] = useState<string[]>([]);
   const [categoriaLote, setCategoriaLote] = useState('');
   const [processandoLote, setProcessandoLote] = useState(false);
-
   const [mostrarRelatorio, setMostrarRelatorio] = useState(false);
   const dataAtual = new Date();
   const mesAtual = dataAtual.getMonth() + 1;
   const anoAtual = dataAtual.getFullYear();
-
   const [buscaDescricao, setBuscaDescricao] = useState('');
   const [mesFiltro, setMesFiltro] = useState<number>(mesAtual);
   const [anoFiltro, setAnoFiltro] = useState<number>(anoAtual);
   const [statusFiltro, setStatusFiltro] = useState<'todos' | 'pendente' | 'pago'>('todos');
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
-  const [categoriaFiltro, setCategoriaFiltro] = useState('todos'); 
-
+  const [categoriaFiltro, setCategoriaFiltro] = useState('todos');
   const [draftBusca, setDraftBusca] = useState('');
   const [draftMes, setDraftMes] = useState<number>(mesAtual);
   const [draftAno, setDraftAno] = useState<number>(anoAtual);
   const [draftStatus, setDraftStatus] = useState<'todos' | 'pendente' | 'pago'>('todos');
   const [draftTipo, setDraftTipo] = useState<'todos' | 'receita' | 'despesa'>('todos');
   const [draftFornecedor, setDraftFornecedor] = useState('todos');
-  const [draftCategoria, setDraftCategoria] = useState('todos'); 
-
+  const [draftCategoria, setDraftCategoria] = useState('todos');
   const [ordemFaturas, setOrdemFaturas] = useState<'vencimento_asc' | 'emissao_desc' | 'valor_desc' | 'valor_asc'>('vencimento_asc');
   const [compraModal, setCompraModal] = useState<Compra | null>(null);
-
   const [calMes, setCalMes] = useState<number>(mesAtual);
   const [calAno, setCalAno] = useState<number>(anoAtual);
   const [modoArrastar, setModoArrastar] = useState<'vencimento' | 'emissao'>('vencimento');
+
+  const getUserId = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id || null;
+  };
 
   const aplicarFiltros = () => {
     setBuscaDescricao(draftBusca); setMesFiltro(draftMes); setAnoFiltro(draftAno);
@@ -76,12 +72,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const lidarUploadComprovanteIA = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
     const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
     if (!apiKey) return alert("ERRO CRÍTICO: Chave da IA não encontrada.");
-
     setProcessandoIA(true);
-
     try {
       const fileToGenerativePart = async (f: File) => {
         const base64EncodedDataPromise = new Promise<string>((resolve) => {
@@ -91,27 +84,23 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         });
         return { inlineData: { data: await base64EncodedDataPromise, mimeType: f.type } };
       };
-
       const imagePart = await fileToGenerativePart(file);
       const genAI = new GoogleGenerativeAI(apiKey);
       const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
       const promptText = `Você é um assistente financeiro de um ERP. Extraia: "descricao", "valor" (numero float), "data" (YYYY-MM-DD) e "categoria" (sugira uma pasta contábil genérica). Retorne EXATAMENTE UM JSON.`;
-
       const result = await model.generateContent([promptText, imagePart]);
       const responseText = result.response.text();
-      const cleanedText = responseText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const cleanedText = responseText.replace(/
+```json/g, '').replace(/
+```/g, '').trim();
       const dadosExtraidos = JSON.parse(cleanedText);
-
       setDescricao(dadosExtraidos.descricao || 'Despesa Lida por IA');
       setValor(dadosExtraidos.valor ? dadosExtraidos.valor.toString() : '');
       setDataLancamento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
       setDataVencimento(dadosExtraidos.data || new Date().toISOString().split('T')[0]);
       setTipo('despesa');
-      
       const catExiste = categoriasDespesa.find(c => c.nome.toLowerCase() === dadosExtraidos.categoria?.toLowerCase());
       setCategoria(catExiste ? catExiste.nome : (dadosExtraidos.categoria || 'Outros'));
-      
       alert("✅ Leitura concluída com sucesso! Confirme os dados e salve.");
     } catch (error: any) {
       alert(`❌ Erro na leitura do comprovante:\n\n${error.message}`);
@@ -123,33 +112,43 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const lidarSalvar = async (e: any) => {
     e.preventDefault();
     if (!descricao || !valor) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    
+    const userId = await getUserId(); if (!userId) return;
     const valorNum = parseFloat(valor);
     const fId = tipo === 'despesa' && fornSelecionado ? fornSelecionado : null;
-
     try {
       if (idEdicao || !isRecorrente) {
-        const dados = { tipo, descricao, valor: valorNum, dataVencimento, dataLancamento, categoria: categoria || 'Geral', fornecedorId: fId };
-        if (idEdicao) await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', idEdicao), dados);
-        else await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), { ...dados, status: 'pendente' });
+        const dados: any = {
+          tipo, descricao, valor: valorNum,
+          data_vencimento: dataVencimento, data_lancamento: dataLancamento,
+          categoria: categoria || 'Geral', fornecedor_id: fId,
+        };
+        if (idEdicao) {
+          const { error } = await supabase.from('lancamentos').update(dados).eq('id', idEdicao).eq('user_id', userId);
+          if (error) throw error;
+        } else {
+          const { error } = await supabase.from('lancamentos').insert({ ...dados, status: 'pendente', user_id: userId });
+          if (error) throw error;
+        }
       } else {
         const qtdMeses = Math.max(1, parseInt(mesesRepetir) || 1);
         const grupoId = 'REC-' + Date.now();
-
         for (let i = 0; i < qtdMeses; i++) {
           const objVenc = new Date(dataVencimento + 'T12:00:00'); objVenc.setMonth(objVenc.getMonth() + i);
           const objLanc = new Date(dataLancamento + 'T12:00:00'); objLanc.setMonth(objLanc.getMonth() + i);
-          await addDoc(collection(db, 'usuarios', userId, 'lancamentos'), {
-            tipo, descricao: qtdMeses > 1 ? `${descricao} (${i + 1}/${qtdMeses})` : descricao,
-            valor: valorNum, dataVencimento: objVenc.toISOString().split('T')[0],
-            dataLancamento: objLanc.toISOString().split('T')[0], categoria: categoria || 'Geral', status: 'pendente',
-            fornecedorId: fId, recorrente: true, grupoRecorrenciaId: grupoId
+          const { error } = await supabase.from('lancamentos').insert({
+            user_id: userId, tipo,
+            descricao: qtdMeses > 1 ? `${descricao} (${i + 1}/${qtdMeses})` : descricao,
+            valor: valorNum,
+            data_vencimento: objVenc.toISOString().split('T')[0],
+            data_lancamento: objLanc.toISOString().split('T')[0],
+            categoria: categoria || 'Geral', status: 'pendente',
+            fornecedor_id: fId, recorrente: true, grupo_recorrencia_id: grupoId,
           });
+          if (error) console.warn('Erro ao inserir parcela:', error.message);
         }
       }
       limparFormulario();
-    } catch (error) { console.error(error); }
+    } catch (error) { console.error(error); alert('Erro ao salvar lançamento.'); }
   };
 
   const iniciarEdicao = (lanc: LancamentoFinanceiro) => {
@@ -159,45 +158,58 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setIsRecorrente(false); setModoSelecao(false); window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const limparFormulario = () => { 
-    setIdEdicao(null); setTipo('despesa'); setDescricao(''); setValor(''); 
-    setDataLancamento(new Date().toISOString().split('T')[0]); setDataVencimento(new Date().toISOString().split('T')[0]); 
+  const limparFormulario = () => {
+    setIdEdicao(null); setTipo('despesa'); setDescricao(''); setValor('');
+    setDataLancamento(new Date().toISOString().split('T')[0]); setDataVencimento(new Date().toISOString().split('T')[0]);
     setCategoria(''); setFornSelecionado(''); setIsRecorrente(false); setMesesRepetir('12');
   };
 
   const alternarStatus = async (lanc: LancamentoFinanceiro) => {
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id), { status: lanc.status === 'pago' ? 'pendente' : 'pago' });
+    const userId = await getUserId(); if (!userId) return;
+    const { error } = await supabase.from('lancamentos').update({ status: lanc.status === 'pago' ? 'pendente' : 'pago' }).eq('id', lanc.id).eq('user_id', userId);
+    if (error) { console.error(error); alert('Erro ao atualizar status.'); }
   };
 
   const excluirLancamento = async (lanc: LancamentoFinanceiro) => {
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId(); if (!userId) return;
     if (lanc.grupoRecorrenciaId) {
       const resposta = window.prompt("Este boleto faz parte de uma sequência repetida!\n\nDigite 'APENAS' para excluir só este mês.\nDigite 'SÉRIE' para apagar todas as parcelas futuras:");
-      if (resposta?.toUpperCase() === 'APENAS') await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id));
-      else if (resposta?.toUpperCase() === 'SÉRIE') {
+      if (resposta?.toUpperCase() === 'APENAS') {
+        const { error } = await supabase.from('lancamentos').delete().eq('id', lanc.id).eq('user_id', userId);
+        if (error) { console.error(error); alert('Erro ao excluir.'); }
+      } else if (resposta?.toUpperCase() === 'SÉRIE') {
         const correspondentes = lancamentos.filter(l => l.grupoRecorrenciaId === lanc.grupoRecorrenciaId);
-        await Promise.all(correspondentes.map(l => deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', l.id))));
+        const idsParaExcluir = correspondentes.map(l => l.id);
+        const { error } = await supabase.from('lancamentos').delete().in('id', idsParaExcluir).eq('user_id', userId);
+        if (error) { console.error(error); alert('Erro ao excluir série.'); }
       }
     } else {
-      if (window.confirm("Excluir permanentemente do banco de dados?")) await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lanc.id));
+      if (window.confirm("Excluir permanentemente do banco de dados?")) {
+        const { error } = await supabase.from('lancamentos').delete().eq('id', lanc.id).eq('user_id', userId);
+        if (error) { console.error(error); alert('Erro ao excluir.'); }
+      }
     }
   };
 
   const excluirValeInteiro = async (compraId: string) => {
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId(); if (!userId) return;
     if (window.confirm("⚠️ Excluir o Vale e a dívida vinculada a ele?")) {
-      await deleteDoc(doc(db, 'usuarios', userId, 'compras', compraId));
+      const { error: errComp } = await supabase.from('compras').delete().eq('id', compraId).eq('user_id', userId);
+      if (errComp) { console.error(errComp); alert('Erro ao excluir compra.'); return; }
       const lancVinculado = lancamentos.find(l => l.compraId === compraId);
-      if (lancVinculado) await deleteDoc(doc(db, 'usuarios', userId, 'lancamentos', lancVinculado.id));
+      if (lancVinculado) {
+        const { error: errLanc } = await supabase.from('lancamentos').delete().eq('id', lancVinculado.id).eq('user_id', userId);
+        if (errLanc) console.error(errLanc);
+      }
       setCompraModal(null);
     }
   };
 
   const adiarVencimento = async (id: string, dias: number, dataAtualStr: string) => {
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId(); if (!userId) return;
     const dataObj = new Date(dataAtualStr + 'T12:00:00'); dataObj.setDate(dataObj.getDate() + dias);
-    await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', id), { dataVencimento: dataObj.toISOString().split('T')[0] });
+    const { error } = await supabase.from('lancamentos').update({ data_vencimento: dataObj.toISOString().split('T')[0] }).eq('id', id).eq('user_id', userId);
+    if (error) { console.error(error); alert('Erro ao adiar vencimento.'); }
   };
 
   const selecionarTodos = () => {
@@ -208,16 +220,11 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const aplicarCategoriaEmMassa = async () => {
     if (selecionados.length === 0) return alert("Selecione pelo menos um registro.");
     if (!categoriaLote) return alert("Escolha a categoria.");
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-
+    const userId = await getUserId(); if (!userId) return;
     setProcessandoLote(true);
     try {
-      const batch = writeBatch(db);
-      selecionados.forEach(id => {
-        const ref = doc(db, 'usuarios', userId, 'lancamentos', id);
-        batch.update(ref, { categoria: categoriaLote });
-      });
-      await batch.commit();
+      const { error } = await supabase.from('lancamentos').update({ categoria: categoriaLote }).in('id', selecionados).eq('user_id', userId);
+      if (error) throw error;
       alert(`✅ Sucesso! ${selecionados.length} registros movidos para "${categoriaLote}".`);
       setModoSelecao(false); setSelecionados([]); setCategoriaLote('');
     } catch (error) {
@@ -246,7 +253,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
   const lancamentosFiltrados = useMemo(() => {
     return lancamentos.filter(l => {
-      const dataLanc = new Date(l.dataVencimento + 'T12:00:00'); 
+      const dataLanc = new Date(l.dataVencimento + 'T12:00:00');
       const mes = dataLanc.getMonth() + 1; const ano = dataLanc.getFullYear();
       const matchBusca = l.descricao.toLowerCase().includes(buscaDescricao.toLowerCase());
       const matchCat = categoriaFiltro === 'todos' || l.categoria === categoriaFiltro;
@@ -278,12 +285,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   }, [lancamentos, buscaDescricao, statusFiltro, tipoFiltro, fornecedorFiltro, categoriaFiltro]);
 
   const mudarMesCal = (dir: number) => { let nMes = calMes + dir; let nAno = calAno; if (nMes > 12) { nMes = 1; nAno++; } if (nMes < 1) { nMes = 12; nAno--; } setCalMes(nMes); setCalAno(nAno); };
+
   const lidarDragStart = (e: any, id: string) => e.dataTransfer.setData('lancId', id);
-  const lidarDragOver = (e: any) => e.preventDefault(); 
+  const lidarDragOver = (e: any) => e.preventDefault();
   const lidarDrop = async (e: any, dataAlvo: string) => {
     e.preventDefault(); const idLanc = e.dataTransfer.getData('lancId'); if (!idLanc || !dataAlvo) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    try { const campo = modoArrastar === 'vencimento' ? 'dataVencimento' : 'dataLancamento'; await updateDoc(doc(db, 'usuarios', userId, 'lancamentos', idLanc), { [campo]: dataAlvo }); } catch (err) { console.error(err); }
+    const userId = await getUserId(); if (!userId) return;
+    try {
+      const campo = modoArrastar === 'vencimento' ? 'data_vencimento' : 'data_lancamento';
+      const { error } = await supabase.from('lancamentos').update({ [campo]: dataAlvo }).eq('id', idLanc).eq('user_id', userId);
+      if (error) throw error;
+    } catch (err) { console.error(err); }
   };
 
   const getCorCategoria = (nomeCat: string) => {
@@ -294,7 +306,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; background-color: white; } .no-print { display: none !important; } }`}} />
-
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
           <h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2>
@@ -327,7 +338,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         </div>
       )}
 
-      {/* ABAS PREMIUM */}
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px no-print">
         <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Terminal de Extrato</button>
         <button onClick={() => setAbaAtiva('fornecedores')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'fornecedores' ? 'bg-rose-50 text-rose-600 border-t-2 border-rose-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Dívidas Fornecedor</button>
@@ -336,33 +346,23 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
       {abaAtiva === 'caixa' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in print:hidden">
-          
           <div className="xl:col-span-4 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 h-fit sticky top-24">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
               <h3 className="font-black text-xl text-slate-800 tracking-tight">{idEdicao ? 'Revisão de Registro' : 'Injeção de Dados'}</h3>
-              
               <label className={`cursor-pointer group flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${processandoIA ? 'bg-slate-100 text-slate-400 pointer-events-none' : 'bg-slate-900 hover:bg-indigo-600 text-indigo-400 hover:text-white shadow-lg shadow-indigo-500/20 border border-indigo-500/30'}`}>
-                {processandoIA ? (
-                  <><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Lendo...</>
-                ) : (
-                  <><span>✨</span> Escanear Recibo IA</>
-                )}
+                {processandoIA ? (<><span className="w-2 h-2 rounded-full bg-slate-400 animate-ping"></span> Lendo...</>) : (<><span>✨</span> Escanear Recibo IA</>)}
                 <input type="file" accept="image/*,application/pdf" onChange={lidarUploadComprovanteIA} className="hidden" />
               </label>
-
             </div>
-            
             <form onSubmit={lidarSalvar} className="space-y-5">
               <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200">
                 <button type="button" onClick={() => { setTipo('despesa'); setFornSelecionado(''); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tipo === 'despesa' ? 'bg-white text-rose-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Saída</button>
                 <button type="button" onClick={() => { setTipo('receita'); setFornSelecionado(''); }} className={`flex-1 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tipo === 'receita' ? 'bg-white text-emerald-600 shadow-sm border border-slate-200' : 'text-slate-400 hover:text-slate-600'}`}>Entrada</button>
               </div>
-              
               <div>
                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Descrição</label>
                 <input type="text" required placeholder="Ex: Pagamento Mercado Livre" value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none focus:border-indigo-500" />
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Valor</label>
@@ -378,29 +378,23 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                   </select>
                 </div>
               </div>
-              
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Data Emissão</label><input type="date" required value={dataLancamento} onChange={(e) => setDataLancamento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
                 <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Vencimento</label><input type="date" required value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} className="w-full px-4 py-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none" /></div>
               </div>
-              
               {tipo === 'despesa' && (
                 <div className="bg-slate-50 p-4 rounded-xl border border-slate-200"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Vincular a Fornecedor</label><select value={fornSelecionado} onChange={(e) => setFornSelecionado(e.target.value)} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 outline-none"><option value="">Nenhum (Avulso)</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
               )}
-              
               {!idEdicao && (
                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3"><label className="flex items-center gap-3 font-black text-indigo-900 text-xs cursor-pointer"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-5 h-5 accent-indigo-600" />🔁 Lançamento Mensal Recorrente?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1 mt-2">Duração (Meses)</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-4 py-3 border border-indigo-200 rounded-xl font-black text-lg text-indigo-600 bg-white outline-none" /></div>)}</div>
               )}
-              
               <div className="flex gap-3 pt-4 border-t border-slate-100">
                 <button type="submit" className={`flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{idEdicao ? 'Atualizar Registro' : 'Salvar Registro'}</button>
                 {idEdicao && <button type="button" onClick={limparFormulario} className="px-6 bg-slate-200 text-slate-600 font-black uppercase text-xs rounded-xl hover:bg-slate-300">Cancelar</button>}
               </div>
             </form>
           </div>
-
           <div className="xl:col-span-8 space-y-6">
-            
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">💰</div>
@@ -418,11 +412,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 <p className={`text-2xl font-black font-mono tracking-tight relative z-10 ${resumoFiltrado.saldo >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p>
               </div>
             </div>
-
             <div className="bg-[#0b1120] rounded-3xl shadow-2xl border border-slate-800 overflow-hidden relative">
-              
               <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none z-0 opacity-20"></div>
-
               <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50 relative z-10">
                 <div className="flex items-center gap-3">
                   <div className="flex gap-1.5">
@@ -432,12 +423,10 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                   </div>
                   <p className="text-xs font-black text-slate-400 uppercase tracking-widest ml-2">Extrato Financeiro</p>
                 </div>
-                
                 <button onClick={() => { setModoSelecao(!modoSelecao); setSelecionados([]); }} className={`mt-4 sm:mt-0 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-lg transition-all border ${modoSelecao ? 'bg-rose-500/20 text-rose-400 border-rose-500/50 shadow-[0_0_10px_rgba(225,29,72,0.2)]' : 'bg-slate-800 text-blue-400 hover:text-white border-slate-700 hover:border-blue-500'}`}>
                   {modoSelecao ? '✕ Cancelar Seleção' : '✏️ Edição em Lote'}
                 </button>
               </div>
-
               {modoSelecao && (
                 <div className="bg-blue-900/20 border-b border-blue-500/30 p-4 flex flex-wrap gap-4 items-center justify-between relative z-10 animate-fade-in">
                   <div className="flex items-center gap-3">
@@ -456,7 +445,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                   </div>
                 </div>
               )}
-
               <div className="relative z-10">
                 {lancamentosFiltrados.length === 0 ? (
                   <div className="p-16 text-center">
@@ -468,22 +456,18 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                     {lancamentosFiltrados.map(lanc => {
                       const isAtrasado = lanc.status === 'pendente' && lanc.tipo === 'despesa' && lanc.dataVencimento < new Date().toISOString().split('T')[0];
                       const selecionado = selecionados.includes(lanc.id);
-
                       return (
                         <div key={lanc.id} className={`p-4 sm:px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors hover:bg-slate-800/50 ${lanc.status === 'pago' ? 'opacity-60 grayscale-[50%]' : ''} ${selecionado ? 'bg-blue-900/20 border-l-4 border-l-blue-500' : 'border-l-4 border-transparent'}`}>
-                          
                           <div className="flex items-center gap-4 flex-1 min-w-0">
                             {modoSelecao && (
                               <input type="checkbox" checked={selecionado} onChange={() => { if(selecionado) setSelecionados(selecionados.filter(i=>i!==lanc.id)); else setSelecionados([...selecionados, lanc.id]); }} className="w-5 h-5 accent-blue-600 cursor-pointer shrink-0 rounded bg-slate-900 border-slate-700" />
                             )}
-                            
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2.5 mb-1.5">
                                 {!modoSelecao && (
                                   <div className={`w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] ${lanc.tipo === 'despesa' ? 'bg-rose-500 text-rose-500' : 'bg-emerald-500 text-emerald-500'}`}></div>
                                 )}
                                 <p className={`font-bold text-sm truncate ${lanc.tipo === 'despesa' ? 'text-slate-200' : 'text-emerald-100'}`}>{lanc.descricao}</p>
-                                
                                 {lanc.recorrente && <span className="bg-blue-900/50 text-blue-400 border border-blue-500/30 text-[9px] font-black font-mono px-1.5 py-0.5 rounded">MENSAL</span>}
                                 {lanc.categoria && <span className="text-[8px] font-black uppercase px-1.5 py-0.5 rounded border opacity-80" style={{ borderColor: getCorCategoria(lanc.categoria), color: getCorCategoria(lanc.categoria), backgroundColor: `${getCorCategoria(lanc.categoria)}15` }}>{lanc.categoria}</span>}
                               </div>
@@ -492,7 +476,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                               </p>
                             </div>
                           </div>
-
                           <div className="flex items-center justify-between sm:justify-end gap-5">
                             <span className={`font-mono text-xl font-black tracking-tight ${lanc.tipo === 'despesa' ? 'text-rose-400' : 'text-emerald-400'}`}>
                               {lanc.tipo === 'despesa' ? '-' : '+'}R${lanc.valor.toFixed(2)}
@@ -505,7 +488,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                               <button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-rose-500 hover:bg-rose-500 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✕</button>
                             </div>
                           </div>
-
                         </div>
                       );
                     })}
@@ -517,7 +499,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         </div>
       )}
 
-      {/* ABA 2: FORNECEDORES (Clean e Direto) */}
       {abaAtiva === 'fornecedores' && (
         <div className="space-y-6 animate-fade-in print:hidden pb-32">
           {relatorioFornecedores.length > 0 && (
@@ -539,12 +520,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                         <div className="w-full md:w-auto">
                           <p className="font-bold text-slate-800 text-sm mb-2">{fat.descricao}</p>
                           <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono font-black uppercase tracking-widest">
-                            <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md border border-slate-200">
-                              Emit: {fat.dataLancamento ? fat.dataLancamento.split('-').reverse().join('/') : '---'}
-                            </span>
-                            <span className={`px-2.5 py-1 rounded-md border ${isAtrasado ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
-                              Venc: {fat.dataVencimento.split('-').reverse().join('/')}
-                            </span>
+                            <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md border border-slate-200">Emit: {fat.dataLancamento ? fat.dataLancamento.split('-').reverse().join('/') : '---'}</span>
+                            <span className={`px-2.5 py-1 rounded-md border ${isAtrasado ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>Venc: {fat.dataVencimento.split('-').reverse().join('/')}</span>
                           </div>
                         </div>
                         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-end">
@@ -561,9 +538,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                           <button onClick={() => alternarStatus(fat)} className="px-5 py-2.5 bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-700 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors">Pagar</button>
                         </div>
                       </div>
-                    )
+                    );
                   })}
-                </div></div>
+                }</div></div>
               </div>
             ))
           )}
@@ -577,7 +554,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         </div>
       )}
 
-      {/* ABA 3: CALENDÁRIO */}
       {abaAtiva === 'calendario' && (
         <div className="bg-white p-8 rounded-3xl shadow-xl border border-slate-200 animate-fade-in print:hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
@@ -607,7 +583,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               })}
             </div>
           </div></div>
-
           <div className="mt-8 flex flex-col md:flex-row justify-between items-center bg-slate-900 p-6 rounded-2xl border border-slate-800 shadow-xl gap-4 relative overflow-hidden">
             <div className="absolute top-0 right-1/2 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest relative z-10">Resumo: {new Date(calAno, calMes - 1).toLocaleString('pt-BR', { month: 'long' })}</p>
@@ -643,7 +618,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             </div>
           </div>
         </div>
-        
         <table className="w-full text-left text-sm border-collapse">
           <thead>
             <tr className="bg-slate-100 border-b-2 border-slate-300">
@@ -662,14 +636,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 <td className="p-3 font-mono font-bold">{l.dataVencimento.split('-').reverse().join('/')}</td>
                 <td className="p-3 font-bold text-slate-800">{l.descricao}</td>
                 <td className="p-3 text-slate-500">{l.categoria}</td>
-                <td className="p-3">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${l.status === 'pago' ? 'bg-slate-200 text-slate-600' : 'bg-rose-100 text-rose-600'}`}>
-                    {l.status}
-                  </span>
-                </td>
-                <td className={`p-3 text-right font-black font-mono text-lg ${l.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>
-                  {l.tipo === 'despesa' ? '-' : '+'} R$ {l.valor.toFixed(2)}
-                </td>
+                <td className="p-3"><span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${l.status === 'pago' ? 'bg-slate-200 text-slate-600' : 'bg-rose-100 text-rose-600'}`}>{l.status}</span></td>
+                <td className={`p-3 text-right font-black font-mono text-lg ${l.tipo === 'despesa' ? 'text-rose-600' : 'text-emerald-600'}`}>{l.tipo === 'despesa' ? '-' : '+'} R$ {l.valor.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

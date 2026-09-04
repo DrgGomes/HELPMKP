@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { doc, addDoc, collection, deleteDoc } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { supabase } from '../supabase';
 import type { CustoPadrao, Categoria, CategoriaDespesa } from '../types';
 
 interface CustosProps {
@@ -12,36 +11,61 @@ interface CustosProps {
 export default function Custos({ custosPadrao, categorias, categoriasDespesa }: CustosProps) {
   const [nomeCusto, setNomeCusto] = useState(''); const [valorCusto, setValorCusto] = useState(''); const [iconeCusto, setIconeCusto] = useState('📦');
   const [nomeCategoria, setNomeCategoria] = useState('');
-  
   const [nomeCatDesp, setNomeCatDesp] = useState(''); const [corCatDesp, setCorCatDesp] = useState('#3b82f6');
   const coresPadrao = ['#ef4444', '#f97316', '#f59e0b', '#10b981', '#14b8a6', '#06b6d4', '#3b82f6', '#8b5cf6', '#d946ef', '#64748b', '#0f172a'];
 
+  const getUserId = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id || null;
+  };
+
   const adicionarCustoPadrao = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeCusto || !valorCusto) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    await addDoc(collection(db, 'usuarios', userId, 'custos_padrao'), { nome: nomeCusto, valor: parseFloat(valorCusto), icone: iconeCusto });
+    const userId = await getUserId(); if (!userId) return;
+    const { error } = await supabase.from('custos_padrao').insert({ nome: nomeCusto, valor: parseFloat(valorCusto), icone: iconeCusto, user_id: userId });
+    if (error) { console.error(error); alert('Erro ao salvar custo.'); return; }
     setNomeCusto(''); setValorCusto('');
   };
 
-  const apagarCustoPadrao = async (id: string) => { const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'custos_padrao', id)); };
+  const apagarCustoPadrao = async (id: string) => {
+    const userId = await getUserId();
+    if (userId && window.confirm("Excluir?")) {
+      const { error } = await supabase.from('custos_padrao').delete().eq('id', id).eq('user_id', userId);
+      if (error) { console.error(error); alert('Erro ao excluir.'); }
+    }
+  };
 
   const adicionarCategoria = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeCategoria) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    await addDoc(collection(db, 'usuarios', userId, 'categorias'), { nome: nomeCategoria });
+    const userId = await getUserId(); if (!userId) return;
+    const { error } = await supabase.from('categorias').insert({ nome: nomeCategoria, user_id: userId });
+    if (error) { console.error(error); alert('Erro ao salvar categoria.'); return; }
     setNomeCategoria('');
   };
 
-  const apagarCategoria = async (id: string) => { const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'categorias', id)); };
+  const apagarCategoria = async (id: string) => {
+    const userId = await getUserId();
+    if (userId && window.confirm("Excluir?")) {
+      const { error } = await supabase.from('categorias').delete().eq('id', id).eq('user_id', userId);
+      if (error) { console.error(error); alert('Erro ao excluir.'); }
+    }
+  };
 
   const adicionarCatDesp = async (e: React.FormEvent) => {
     e.preventDefault(); if (!nomeCatDesp) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
-    await addDoc(collection(db, 'usuarios', userId, 'categorias_despesas'), { nome: nomeCatDesp, cor: corCatDesp });
+    const userId = await getUserId(); if (!userId) return;
+    const { error } = await supabase.from('categorias_despesas').insert({ nome: nomeCatDesp, cor: corCatDesp, user_id: userId });
+    if (error) { console.error(error); alert('Erro ao salvar categoria.'); return; }
     setNomeCatDesp('');
   };
 
-  const apagarCatDesp = async (id: string) => { const userId = auth.currentUser?.uid as string; if (userId && window.confirm("Excluir?")) await deleteDoc(doc(db, 'usuarios', userId, 'categorias_despesas', id)); };
+  const apagarCatDesp = async (id: string) => {
+    const userId = await getUserId();
+    if (userId && window.confirm("Excluir?")) {
+      const { error } = await supabase.from('categorias_despesas').delete().eq('id', id).eq('user_id', userId);
+      if (error) { console.error(error); alert('Erro ao excluir.'); }
+    }
+  };
 
   return (
     <div className="animate-fade-in max-w-7xl mx-auto space-y-6">

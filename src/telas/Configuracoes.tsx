@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { doc, setDoc, addDoc, collection, deleteDoc, getDocs, writeBatch } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { supabase } from '../supabase';
 import type { Plataforma } from '../types';
 
 interface ConfiguracoesProps {
@@ -15,28 +14,43 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
   const [taxaFixa, setTaxaFixa] = useState('');
   const [freteFixo, setFreteFixo] = useState('');
   const [logo, setLogo] = useState('');
-
-  // Estados do Backup
   const [fazendoBackup, setFazendoBackup] = useState(false);
   const [restaurando, setRestaurando] = useState(false);
+
+  const getUserId = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user?.id || null;
+  };
 
   // --- LÓGICA DE MARKETPLACES ---
   const lidarSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome) return;
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId();
+    if (!userId) return;
 
     const dados = {
-      nome, logo: logo || `https://ui-avatars.com/api/?name=${nome}&background=random`,
-      comissao: parseFloat(comissao) || 0, comissaoAfiliado: parseFloat(comissaoAfiliado) || 0,
-      taxaFixa: parseFloat(taxaFixa) || 0, freteFixo: parseFloat(freteFixo) || 0
+      nome,
+      logo: logo || `https://ui-avatars.com/api/?name=${nome}&background=random`,
+      comissao: parseFloat(comissao) || 0,
+      comissao_afiliado: parseFloat(comissaoAfiliado) || 0,
+      taxa_fixa: parseFloat(taxaFixa) || 0,
+      frete_fixo: parseFloat(freteFixo) || 0,
     };
 
     try {
-      if (idEdicao) await setDoc(doc(db, 'usuarios', userId, 'plataformas', idEdicao), dados);
-      else await addDoc(collection(db, 'usuarios', userId, 'plataformas'), dados);
+      if (idEdicao) {
+        const { error } = await supabase.from('plataformas').update(dados).eq('id', idEdicao).eq('user_id', userId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from('plataformas').insert({ ...dados, user_id: userId });
+        if (error) throw error;
+      }
       limparFormulario();
-    } catch (error) { console.error(error); }
+    } catch (error) {
+      console.error(error);
+      alert('Erro ao salvar a plataforma.');
+    }
   };
 
   const iniciarEdicao = (plat: Plataforma) => {
@@ -52,26 +66,29 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
   };
 
   const excluirPlataforma = async (id: string) => {
-    const userId = auth.currentUser?.uid as string;
-    if (userId && window.confirm("Excluir esta plataforma?")) await deleteDoc(doc(db, 'usuarios', userId, 'plataformas', id));
+    const userId = await getUserId();
+    if (userId && window.confirm("Excluir esta plataforma?")) {
+      const { error } = await supabase.from('plataformas').delete().eq('id', id).eq('user_id', userId);
+      if (error) { console.error(error); alert('Erro ao excluir.'); }
+    }
   };
 
   // --- O COFRE DE DADOS: GERAR BACKUP (EXPORTAR) ---
   const gerarBackup = async () => {
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId();
+    if (!userId) return;
     setFazendoBackup(true);
     try {
-      const colecoes = ['plataformas', 'produtos', 'custos_padrao', 'categorias', 'fornecedores', 'lancamentos', 'compras'];
+      const tabelas = ['plataformas', 'produtos', 'custos_padrao', 'categorias', 'categorias_despesas', 'fornecedores', 'lancamentos', 'compras', 'midias'];
       const dadosBackup: Record<string, any[]> = {};
 
-      for (const nomeCol of colecoes) {
-        const snapshot = await getDocs(collection(db, 'usuarios', userId, nomeCol));
-        dadosBackup[nomeCol] = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      for (const tabela of tabelas) {
+        const { data, error } = await supabase.from(tabela).select('*').eq('user_id', userId);
+        if (error) throw error;
+        dadosBackup[tabela] = data || [];
       }
 
       const backupFinal = { timestamp: new Date().toISOString(), dados: dadosBackup };
-      
-      // Cria o arquivo JSON e força o download
       const blob = new Blob([JSON.stringify(backupFinal, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -81,9 +98,9 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      
     } catch (error) {
-      console.error(error); alert("Erro ao gerar o backup.");
+      console.error(error);
+      alert("Erro ao gerar o backup.");
     }
     setFazendoBackup(false);
   };
@@ -92,51 +109,51 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
   const restaurarBackup = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-
-    if (!window.confirm("⚠️ ALERTA VERMELHO: Isso vai SOBRESCREVER o seu banco de dados atual com as informações do arquivo. Tem certeza absoluta?")) {
-      event.target.value = ''; return;
+    if (!window.confirm("⚠️ ALERTA: Isso vai SOBRESCREVER o seu banco de dados atual com as informações do arquivo. Tem certeza absoluta?")) {
+      event.target.value = '';
+      return;
     }
-
-    const userId = auth.currentUser?.uid as string; if (!userId) return;
+    const userId = await getUserId();
+    if (!userId) return;
     setRestaurando(true);
-
     try {
       const leitor = new FileReader();
       leitor.onload = async (e) => {
         try {
           const conteudo = e.target?.result as string;
           const backupRestaurado = JSON.parse(conteudo);
-
           if (!backupRestaurado.dados) throw new Error("Arquivo de backup inválido.");
 
-          // O Firebase recomenda enviar em Lotes (Batches) para não travar
-          const batch = writeBatch(db);
           let operacoes = 0;
-
-          for (const [nomeCol, itens] of Object.entries(backupRestaurado.dados)) {
+          for (const [nomeTabela, itens] of Object.entries(backupRestaurado.dados)) {
             const arrItens = itens as any[];
-            for (const item of arrItens) {
-              const docRef = doc(db, 'usuarios', userId, nomeCol, item.id);
-              batch.set(docRef, item);
-              operacoes++;
-            }
+            if (arrItens.length === 0) continue;
+            const itensComUserId = arrItens.map(item => {
+              const { id, ...rest } = item;
+              return { ...rest, user_id: userId };
+            });
+            const { error } = await supabase.from(nomeTabela).upsert(itensComUserId);
+            if (error) console.warn(`Erro ao restaurar tabela ${nomeTabela}:`, error.message);
+            else operacoes += itensComUserId.length;
           }
 
           if (operacoes > 0) {
-            await batch.commit();
-            alert(`✅ Restauração Concluída! ${operacoes} registros foram salvos no sistema. Recarregue a página.`);
+            alert(`✅ Restauração Concluída! ${operacoes} registros foram salvos. Recarregue a página.`);
             window.location.reload();
           } else {
             alert("O arquivo de backup estava vazio.");
           }
         } catch (err) {
-          console.error(err); alert("Erro ao ler o arquivo. Tem certeza que é um backup do HelpMkp?");
+          console.error(err);
+          alert("Erro ao ler o arquivo. Tem certeza que é um backup do HelpMkp?");
         }
         setRestaurando(false);
       };
       leitor.readAsText(file);
     } catch (error) {
-      console.error(error); alert("Erro catastrófico ao restaurar."); setRestaurando(false);
+      console.error(error);
+      alert("Erro catastrófico ao restaurar.");
+      setRestaurando(false);
     }
   };
 
@@ -147,29 +164,22 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
         <p className="text-slate-500 mt-1">Configure suas taxas de venda e proteja os dados do seu sistema.</p>
       </header>
 
-      {/* --- MÓDULO DO COFRE DE DADOS (NOVO) --- */}
+      {/* --- MÓDULO DO COFRE DE DADOS --- */}
       <div className="bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-800 text-white flex flex-col lg:flex-row gap-8 items-center justify-between">
         <div className="lg:w-1/2">
           <h3 className="text-2xl font-black text-emerald-400 mb-2 flex items-center gap-2"><span>🛡️</span> Cofre de Dados (Backup)</h3>
           <p className="text-slate-400 text-sm leading-relaxed mb-4">
             Baixe uma cópia completa de segurança de <strong>todos</strong> os seus produtos, finanças, compras e fornecedores. Faça isso no final do dia ou antes de testar alterações grandes.
           </p>
-          <button 
-            onClick={gerarBackup} 
-            disabled={fazendoBackup}
-            className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-slate-900 font-black rounded-xl transition-all shadow-lg shadow-emerald-600/30 disabled:opacity-50"
-          >
+          <button onClick={gerarBackup} disabled={fazendoBackup} className="w-full sm:w-auto px-8 py-4 bg-emerald-600 hover:bg-emerald-500 text-slate-900 font-black rounded-xl transition-all shadow-lg shadow-emerald-600/30 disabled:opacity-50">
             {fazendoBackup ? 'Empacotando Cofre...' : '💾 Baixar Cópia de Segurança (.json)'}
           </button>
         </div>
-        
         <div className="w-px h-32 bg-slate-800 hidden lg:block"></div>
-
         <div className="lg:w-1/2 bg-slate-950 p-6 rounded-2xl border border-rose-900/30 relative overflow-hidden group">
           <div className="absolute top-0 left-0 w-2 h-full bg-rose-600"></div>
           <h4 className="font-bold text-rose-500 mb-2 uppercase tracking-widest text-xs">Zona de Risco - Restaurar</h4>
           <p className="text-slate-500 text-xs mb-4">Subir um arquivo de backup irá sobrescrever as informações atuais do sistema. Use com extrema cautela.</p>
-          
           <label className={`block text-center px-6 py-3 border-2 border-dashed border-slate-700 hover:border-rose-500 rounded-xl cursor-pointer transition-colors ${restaurando ? 'opacity-50 pointer-events-none' : ''}`}>
             <span className="font-bold text-slate-300">{restaurando ? 'Restaurando o sistema...' : '📂 Clique para Subir Arquivo de Backup'}</span>
             <input type="file" accept=".json" onChange={restaurarBackup} className="hidden" disabled={restaurando} />
@@ -177,10 +187,9 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
         </div>
       </div>
 
-      {/* --- MÓDULO DE PLATAFORMAS (MARKETPLACES) --- */}
+      {/* --- MÓDULO DE PLATAFORMAS --- */}
       <div className="pt-4 border-t border-slate-200">
         <h3 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-2"><span>🛍️</span> Canais de Venda (Marketplaces)</h3>
-        
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 h-fit">
             <h3 className="font-bold text-slate-800 mb-4">{idEdicao ? 'Editar' : 'Nova'} Plataforma</h3>
@@ -201,7 +210,6 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
               </div>
             </form>
           </div>
-
           <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {plataformas.length === 0 ? <div className="sm:col-span-2 lg:col-span-3 bg-white p-10 rounded-2xl border border-dashed border-slate-300 text-center text-slate-500 font-bold">Nenhum canal de venda cadastrado.</div> : (
               plataformas.map(plat => (
@@ -210,12 +218,10 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
                     <button onClick={() => iniciarEdicao(plat)} className="p-1.5 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">✏️</button>
                     <button onClick={() => excluirPlataforma(plat.id)} className="p-1.5 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100">🗑️</button>
                   </div>
-                  
                   <div className="flex items-center gap-3 mb-4">
                     <img src={plat.logo} alt={plat.nome} className="w-10 h-10 rounded-lg border border-slate-100 object-cover" />
                     <h4 className="font-black text-slate-800 leading-tight truncate">{plat.nome}</h4>
                   </div>
-                  
                   <div className="space-y-2 mt-auto">
                     <div className="flex justify-between items-center text-xs bg-slate-50 p-2 rounded-lg"><span className="font-bold text-slate-500">Taxa Global</span><span className="font-black text-slate-800">{(plat.comissao + plat.comissaoAfiliado).toFixed(1)}%</span></div>
                     {(plat.taxaFixa > 0 || plat.freteFixo > 0) && (
@@ -228,7 +234,6 @@ export default function Configuracoes({ plataformas }: ConfiguracoesProps) {
           </div>
         </div>
       </div>
-
     </div>
   );
 }
