@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { supabase } from '../supabase';
 import type { LancamentoFinanceiro, Compra, Fornecedor, CategoriaDespesa } from '../types';
 
@@ -9,6 +9,13 @@ interface FinanceiroProps {
   categoriasDespesa: CategoriaDespesa[];
 }
 
+
+export function somarMesesData(data: string, meses: number): string {
+  const [ano, mes, dia] = data.split('-').map(Number);
+  const primeiro = new Date(ano, mes - 1 + meses, 1);
+  const ultimoDia = new Date(primeiro.getFullYear(), primeiro.getMonth() + 1, 0).getDate();
+  return `${primeiro.getFullYear()}-${String(primeiro.getMonth() + 1).padStart(2, '0')}-${String(Math.min(dia, ultimoDia)).padStart(2, '0')}`;
+}
 
 export function demonstrativoFornecedor(
   fornecedor: { id: string; nome: string },
@@ -61,6 +68,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [anoFiltro, setAnoFiltro] = useState<number>(anoAtual);
   const [statusFiltro, setStatusFiltro] = useState<'todos' | 'pendente' | 'pago'>('todos');
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'receita' | 'despesa'>('todos');
+  const [buscaFornecedor, setBuscaFornecedor] = useState('');
+  const [situacaoFornecedor, setSituacaoFornecedor] = useState('todos');
+  const hojeLocal = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; })();
   const [fornecedorDivida, setFornecedorDivida] = useState('todos');
   const [exportandoFornecedor, setExportandoFornecedor] = useState(false);
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
@@ -96,46 +106,46 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setDraftCategoria('todos'); setCategoriaFiltro('todos'); setSelecionados([]);
   };
 
-  const lidarSalvar = async (e: any) => {
+  const [salvandoConta, setSalvandoConta] = useState(false);
+  const travaSalvar = useRef(false);
+  const lidarSalvar = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!descricao || !valor) return;
-    const userId = await getUserId(); if (!userId) return;
-    const valorNum = parseFloat(valor);
-    const fId = tipo === 'despesa' && fornSelecionado ? fornSelecionado : null;
+    if (travaSalvar.current) return;
+    const valorNum = Number(valor.replace(',', '.'));
+    if (!descricao.trim() || !Number.isFinite(valorNum) || valorNum <= 0 || Math.abs(valorNum * 100 - Math.round(valorNum * 100)) > 0.00001) {
+      alert('Informe descrição e valor positivo com até duas casas decimais.'); return;
+    }
+    if (!dataVencimento || !dataLancamento) { alert('Informe as datas de emissão e vencimento.'); return; }
+    const quantidade = Number(mesesRepetir);
+    if (isRecorrente && (!Number.isInteger(quantidade) || quantidade < 1 || quantidade > 60)) { alert('Use entre 1 e 60 repetições.'); return; }
+    const original = lancamentos.find(l => l.id === idEdicao);
+    if (original?.compraId && (valorNum !== original.valor || (fornSelecionado || '') !== (original.fornecedorId || ''))) { alert('Valor e fornecedor de uma conta vinculada à compra devem ser preservados.'); return; }
+    travaSalvar.current = true; setSalvandoConta(true);
     try {
-      if (idEdicao || !isRecorrente) {
-        const dados: any = {
-          tipo, descricao, valor: valorNum,
-          data_vencimento: dataVencimento, data_lancamento: dataLancamento,
-          categoria: categoria || 'Geral', fornecedor_id: fId,
-        };
-        if (idEdicao) {
-          const { error } = await supabase.from('lancamentos').update(dados).eq('id', idEdicao).eq('user_id', userId);
-          if (error) throw error;
-        } else {
-          const { error } = await supabase.from('lancamentos').insert({ ...dados, status: 'pendente', user_id: userId });
-          if (error) throw error;
-        }
+      const userId = await getUserId();
+      if (!userId) throw new Error('Entre no sistema novamente.');
+      const dados = { tipo, descricao: descricao.trim(), valor: valorNum,
+        data_vencimento: dataVencimento, data_lancamento: dataLancamento,
+        categoria: categoria || 'Geral', fornecedor_id: tipo === 'despesa' && fornSelecionado ? fornSelecionado : null };
+      if (idEdicao) {
+        const { data, error } = await supabase.from('lancamentos').update(dados).eq('id', idEdicao).eq('user_id', userId).select('id');
+        if (error) throw error;
+        if (!data?.length) throw new Error('A conta não foi encontrada. Atualize a página.');
       } else {
-        const qtdMeses = Math.max(1, parseInt(mesesRepetir) || 1);
-        const grupoId = 'REC-' + Date.now();
-        for (let i = 0; i < qtdMeses; i++) {
-          const objVenc = new Date(dataVencimento + 'T12:00:00'); objVenc.setMonth(objVenc.getMonth() + i);
-          const objLanc = new Date(dataLancamento + 'T12:00:00'); objLanc.setMonth(objLanc.getMonth() + i);
-          const { error } = await supabase.from('lancamentos').insert({
-            user_id: userId, tipo,
-            descricao: qtdMeses > 1 ? `${descricao} (${i + 1}/${qtdMeses})` : descricao,
-            valor: valorNum,
-            data_vencimento: objVenc.toISOString().split('T')[0],
-            data_lancamento: objLanc.toISOString().split('T')[0],
-            categoria: categoria || 'Geral', status: 'pendente',
-            fornecedor_id: fId, recorrente: true, grupo_recorrencia_id: grupoId,
-          });
-          if (error) console.warn('Erro ao inserir parcela:', error.message);
-        }
+        const grupoId = isRecorrente ? 'REC-' + crypto.randomUUID() : null;
+        const registros = Array.from({ length: isRecorrente ? quantidade : 1 }, (_, i) => ({
+          ...dados, user_id: userId, status: 'pendente',
+          descricao: isRecorrente && quantidade > 1 ? `${descricao.trim()} (${i + 1}/${quantidade})` : descricao.trim(),
+          data_vencimento: somarMesesData(dataVencimento, i),
+          data_lancamento: dataLancamento,
+          recorrente: isRecorrente, grupo_recorrencia_id: grupoId,
+        }));
+        const { error } = await supabase.from('lancamentos').insert(registros);
+        if (error) throw error;
       }
       limparFormulario();
-    } catch (error) { console.error(error); alert('Erro ao salvar lançamento.'); }
+    } catch (e) { alert(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao salvar conta.'); }
+    finally { travaSalvar.current = false; setSalvandoConta(false); }
   };
 
   const iniciarEdicao = (lanc: LancamentoFinanceiro) => {
@@ -232,14 +242,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   };
 
   const excluirLancamento = async (lanc: LancamentoFinanceiro) => {
+    if (lanc.compraId) { alert('Esta conta pertence a uma compra. Para preservar estoque e parcelas, a exclusão isolada está bloqueada.'); return; }
+    if (lanc.status === 'pago' || (pagosPorConta[lanc.id] || 0) > 0) { alert('Esta conta possui pagamento ou quitação. A exclusão está bloqueada.'); return; }
     const userId = await getUserId(); if (!userId) return;
     if (lanc.grupoRecorrenciaId) {
-      const resposta = window.prompt("Este boleto faz parte de uma sequência repetida!\n\nDigite 'APENAS' para excluir só este mês.\nDigite 'SÉRIE' para apagar todas as parcelas futuras:");
+      const resposta = window.prompt("Este boleto faz parte de uma sequência repetida!\n\nDigite 'APENAS' para excluir só este mês.\nDigite 'SÉRIE' para apagar toda a série (inclusive meses anteriores):");
       if (resposta?.toUpperCase() === 'APENAS') {
         const { error } = await supabase.from('lancamentos').delete().eq('id', lanc.id).eq('user_id', userId);
         if (error) { console.error(error); alert('Erro ao excluir.'); }
       } else if (resposta?.toUpperCase() === 'SÉRIE') {
         const correspondentes = lancamentos.filter(l => l.grupoRecorrenciaId === lanc.grupoRecorrenciaId);
+        if (correspondentes.some(l => l.compraId || l.status === 'pago' || (pagosPorConta[l.id] || 0) > 0)) { alert('A série contém compra vinculada ou pagamento. A exclusão foi bloqueada.'); return; }
         const idsParaExcluir = correspondentes.map(l => l.id);
         const { error } = await supabase.from('lancamentos').delete().in('id', idsParaExcluir).eq('user_id', userId);
         if (error) { console.error(error); alert('Erro ao excluir série.'); }
@@ -249,20 +262,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         const { error } = await supabase.from('lancamentos').delete().eq('id', lanc.id).eq('user_id', userId);
         if (error) { console.error(error); alert('Erro ao excluir.'); }
       }
-    }
-  };
-
-  const excluirValeInteiro = async (compraId: string) => {
-    const userId = await getUserId(); if (!userId) return;
-    if (window.confirm("⚠️ Excluir o Vale e a dívida vinculada a ele?")) {
-      const { error: errComp } = await supabase.from('compras').delete().eq('id', compraId).eq('user_id', userId);
-      if (errComp) { console.error(errComp); alert('Erro ao excluir compra.'); return; }
-      const lancVinculado = lancamentos.find(l => l.compraId === compraId);
-      if (lancVinculado) {
-        const { error: errLanc } = await supabase.from('lancamentos').delete().eq('id', lancVinculado.id).eq('user_id', userId);
-        if (errLanc) console.error(errLanc);
-      }
-      setCompraModal(null);
     }
   };
 
@@ -344,7 +343,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
     if (fornecedorDivida !== 'todos') listaBase = fornecedores.filter(f => f.id === fornecedorDivida);
-    return listaBase.map(f => {
+    return listaBase.filter(f => f.nome.toLowerCase().includes(buscaFornecedor.trim().toLowerCase())).map(f => {
       const faturasPendentes = lancamentos.filter(l => l.fornecedorId === f.id && l.status === 'pendente' && l.tipo === 'despesa');
       const faturasOrdenadas = faturasPendentes.sort((a, b) => {
         if (ordemFaturas === 'vencimento_asc') return new Date(a.dataVencimento).getTime() - new Date(b.dataVencimento).getTime();
@@ -354,8 +353,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         return 0;
       });
       return { ...f, faturas: faturasOrdenadas, totalDevendo: faturasPendentes.reduce((a, b) => a + saldoDaConta(b), 0) };
-    }).sort((a, b) => b.totalDevendo - a.totalDevendo);
-  }, [fornecedores, lancamentos, fornecedorDivida, ordemFaturas, pagosPorConta]);
+    }).filter(f => situacaoFornecedor === 'todos' || (situacaoFornecedor === 'pendentes' ? f.totalDevendo > 0 : f.faturas.some(l => l.dataVencimento < hojeLocal))).sort((a, b) => b.totalDevendo - a.totalDevendo);
+  }, [fornecedores, lancamentos, fornecedorDivida, ordemFaturas, pagosPorConta, buscaFornecedor, situacaoFornecedor, hojeLocal]);
 
   const exportarFornecedor = async (fornecedor: Fornecedor) => {
     if (exportandoFornecedor) return;
@@ -515,7 +514,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 text-xs">
             <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Busca Específica</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="Buscar palavra..." /></div>
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Mês</label><select value={draftMes} onChange={(e) => setDraftMes(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'short' })}</option>))}</select></div>
-            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Ano</label><select value={draftAno} onChange={(e) => setDraftAno(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option><option value={2025}>2025</option><option value={2026}>2026</option></select></div>
+            <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Ano</label><select value={draftAno} onChange={(e) => setDraftAno(Number(e.target.value))} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value={0}>Todos</option>{Array.from(new Set([new Date().getFullYear() - 1, new Date().getFullYear(), new Date().getFullYear() + 1, ...lancamentos.map(l => Number(l.dataVencimento.slice(0, 4)))] )).sort((a,b) => a-b).map(ano => <option key={ano} value={ano}>{ano}</option>)}</select></div>
             <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Categoria</label><select value={draftCategoria} onChange={(e) => setDraftCategoria(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Qualquer</option>{categoriasDespesa.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}</select></div>
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Status</label><select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value as any)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none"><option value="todos">Todos</option><option value="pendente">Pendentes</option><option value="pago">Pagos</option></select></div>
             <div><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Origem</label><select value={draftFornecedor} onChange={(e) => setDraftFornecedor(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-700 outline-none truncate"><option value="todos">Todos</option><option value="">Avulsos</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></div>
@@ -590,7 +589,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                 <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100 space-y-3"><label className="flex items-center gap-3 font-black text-indigo-900 text-xs cursor-pointer"><input type="checkbox" checked={isRecorrente} onChange={(e) => setIsRecorrente(e.target.checked)} className="w-5 h-5 accent-indigo-600" />🔁 Lançamento Mensal Recorrente?</label>{isRecorrente && (<div className="animate-fade-in"><label className="block text-[10px] font-bold text-indigo-500 uppercase tracking-widest mb-1 mt-2">Duração (Meses)</label><input type="number" min="2" max="36" value={mesesRepetir} onChange={(e) => setMesesRepetir(e.target.value)} className="w-full px-4 py-3 border border-indigo-200 rounded-xl font-black text-lg text-indigo-600 bg-white outline-none" /></div>)}</div>
               )}
               <div className="flex gap-3 pt-4 border-t border-slate-100">
-                <button type="submit" className={`flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{idEdicao ? 'Atualizar Registro' : 'Salvar Registro'}</button>
+                <button type="submit" disabled={salvandoConta} className={`disabled:opacity-50 flex-1 py-4 rounded-xl font-black text-white text-sm tracking-widest uppercase shadow-lg transition-transform hover:scale-105 ${tipo === 'despesa' ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30' : 'bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/30'}`}>{salvandoConta ? 'Salvando...' : idEdicao ? 'Atualizar Registro' : 'Salvar Registro'}</button>
                 {idEdicao && <button type="button" onClick={limparFormulario} className="px-6 bg-slate-200 text-slate-600 font-black uppercase text-xs rounded-xl hover:bg-slate-300">Cancelar</button>}
               </div>
             </form>
@@ -705,7 +704,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         <section className="space-y-5 no-print">
           <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-xl font-bold">Contas de fornecedores</h3><p className="text-sm text-slate-500 mt-1">As mesmas despesas do caixa, agrupadas por fornecedor. Todos os vencimentos estão incluídos.</p></div><div><span className="text-sm text-slate-500">Saldo pendente da seleção</span><strong className="block text-2xl text-rose-600">{carregandoMovimentos ? 'Carregando...' : erroMovimentos ? 'Indisponível' : `R$ ${TOTAL_GERAL_DEVIDO.toFixed(2)}`}</strong></div></div>
-            <div className="flex flex-wrap gap-3"><label className="text-sm">Fornecedor<select value={fornecedorDivida} onChange={e => setFornecedorDivida(e.target.value)} className="block border rounded-lg p-3"><option value="todos">Todos os fornecedores</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></label><label className="text-sm">Ordenar contas<select value={ordemFaturas} onChange={e => setOrdemFaturas(e.target.value as typeof ordemFaturas)} className="block border rounded-lg p-3"><option value="vencimento_asc">Vencimento mais próximo</option><option value="emissao_desc">Emissão mais recente</option><option value="valor_desc">Maior valor</option><option value="valor_asc">Menor valor</option></select></label></div>
+            <div className="flex flex-wrap gap-3"><label className="text-sm">Buscar fornecedor<input value={buscaFornecedor} onChange={e => setBuscaFornecedor(e.target.value)} placeholder="Digite o nome..." className="block border rounded-lg p-3" /></label><label className="text-sm">Situação<select value={situacaoFornecedor} onChange={e => setSituacaoFornecedor(e.target.value)} className="block border rounded-lg p-3"><option value="todos">Todos</option><option value="pendentes">Com saldo pendente</option><option value="atrasados">Com contas vencidas</option></select></label><label className="text-sm">Fornecedor<select value={fornecedorDivida} onChange={e => setFornecedorDivida(e.target.value)} className="block border rounded-lg p-3"><option value="todos">Todos os fornecedores</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></label><label className="text-sm">Ordenar contas<select value={ordemFaturas} onChange={e => setOrdemFaturas(e.target.value as typeof ordemFaturas)} className="block border rounded-lg p-3"><option value="vencimento_asc">Vencimento mais próximo</option><option value="emissao_desc">Emissão mais recente</option><option value="valor_desc">Maior valor</option><option value="valor_asc">Menor valor</option></select></label></div>
             <p className="text-xs text-slate-500">O demonstrativo abre para conferência antes de salvar em PDF. Inclui somente compras, contas e pagamentos do fornecedor escolhido; não inclui observações internas, lucro, preços de venda ou dados de outros fornecedores.</p>
             {erroMovimentos && <p role="alert" className="text-rose-600">Não foi possível calcular os saldos: {erroMovimentos}</p>}
           </div>
@@ -713,7 +712,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           {relatorioFornecedores.map(forn => (
             <div key={forn.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
               <div className="p-5 flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-lg font-bold">{forn.nome}</h3><p className="text-sm text-slate-500">{forn.faturas.length} conta(s) pendente(s)</p></div><div className="flex flex-wrap items-center gap-4"><strong className="text-xl text-rose-600">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${forn.totalDevendo.toFixed(2)}`}</strong><button disabled={exportandoFornecedor} onClick={() => exportarFornecedor(forn)} className="bg-blue-600 text-white rounded-lg px-4 py-3 font-bold text-sm disabled:opacity-50">{exportandoFornecedor ? 'Preparando...' : 'Demonstrativo para fornecedor'}</button></div></div>
-              <details className="border-t border-slate-100"><summary className="cursor-pointer px-5 py-4 font-semibold text-slate-600">Ver contas e registrar pagamentos</summary><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="p-4">Conta</th><th className="p-4">Vencimento</th><th className="p-4">Valor original</th><th className="p-4">Saldo</th><th className="p-4">Ações</th></tr></thead><tbody>{forn.faturas.map(fat => <tr key={fat.id} className="border-t border-slate-100"><td className="p-4">{fat.descricao}</td><td className="p-4 whitespace-nowrap">{fat.dataVencimento.split('-').reverse().join('/')}</td><td className="p-4 whitespace-nowrap">R$ {fat.valor.toFixed(2)}</td><td className="p-4 font-bold whitespace-nowrap">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${saldoDaConta(fat).toFixed(2)}`}</td><td className="p-4"><div className="flex gap-2"><button onClick={() => alternarStatus(fat)} className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg font-bold">Pagar</button>{!fat.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(fat)} className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">Parcelar</button>}<button onClick={() => iniciarEdicao(fat)} className="px-3 py-2 border rounded-lg">Editar</button>{compras.find(c => c.id === fat.compraId) && <button onClick={() => setCompraModal(compras.find(c => c.id === fat.compraId)!)} className="px-3 py-2 border rounded-lg whitespace-nowrap">Ver compra</button>}</div></td></tr>)}</tbody></table>{!forn.faturas.length && <p className="p-5 text-slate-500">Nenhuma conta pendente. O demonstrativo continua disponível para consultar as compras e quitações.</p>}</div></details>
+              <details className="border-t border-slate-100"><summary className="cursor-pointer px-5 py-4 font-semibold text-slate-600">Ver contas e registrar pagamentos</summary><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="p-4">Conta</th><th className="p-4">Vencimento</th><th className="p-4">Valor original</th><th className="p-4">Saldo</th><th className="p-4">Ações</th></tr></thead><tbody>{forn.faturas.map(fat => <tr key={fat.id} className="border-t border-slate-100"><td className="p-4">{fat.descricao}</td><td className={`p-4 whitespace-nowrap ${fat.dataVencimento < hojeLocal ? 'text-rose-600 font-bold' : ''}`}>{fat.dataVencimento.split('-').reverse().join('/')}</td><td className="p-4 whitespace-nowrap">R$ {fat.valor.toFixed(2)}</td><td className="p-4 font-bold whitespace-nowrap">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${saldoDaConta(fat).toFixed(2)}`}</td><td className="p-4"><div className="flex gap-2"><button onClick={() => alternarStatus(fat)} className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg font-bold">Pagar</button>{!fat.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(fat)} className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">Parcelar</button>}<button onClick={() => iniciarEdicao(fat)} className="px-3 py-2 border rounded-lg">Editar</button>{compras.find(c => c.id === fat.compraId) && <button onClick={() => setCompraModal(compras.find(c => c.id === fat.compraId)!)} className="px-3 py-2 border rounded-lg whitespace-nowrap">Ver compra</button>}</div></td></tr>)}</tbody></table>{!forn.faturas.length && <p className="p-5 text-slate-500">Nenhuma conta pendente. O demonstrativo continua disponível para consultar as compras e quitações.</p>}</div></details>
             </div>
           ))}
         </section>
@@ -820,7 +819,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             <div className="p-8 overflow-y-auto"><div className="grid grid-cols-2 gap-6 mb-8 border-b border-slate-100 pb-8"><div><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fornecedor</p><p className="font-black text-slate-800 text-xl">{compraModal.fornecedorNome}</p></div><div className="text-right"><p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">NF / Vale Relacionado</p><p className="font-black text-slate-800 text-xl font-mono">{compraModal.numeroVale || 'N/A'}</p></div></div>
               <div className="space-y-3 mb-6">{compraModal.itens.map(item => (<div key={item.produtoId} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100"><div><p className="font-black text-slate-800">{item.nome}</p><p className="text-[10px] font-bold text-slate-500 mt-1 uppercase tracking-widest">{item.quantidade} UN x R$ {item.custoUnitario.toFixed(2)}</p></div><span className="font-black text-slate-900 text-lg font-mono tracking-tight">R$ {item.subtotal.toFixed(2)}</span></div>))}</div>
             </div>
-            <div className="bg-slate-50 p-8 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-6 mt-auto"><button onClick={() => excluirValeInteiro(compraModal.id)} className="px-6 py-3 text-rose-600 hover:text-white bg-white hover:bg-rose-600 border border-rose-200 rounded-xl text-xs font-black uppercase tracking-widest transition-colors w-full sm:w-auto">🗑️ Excluir Vale Completo</button><div className="text-center sm:text-right w-full sm:w-auto"><p className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-1">Total do Vale</p><p className="text-4xl font-black text-slate-900 font-mono tracking-tight">R$ {compraModal.valorTotal.toFixed(2)}</p></div></div>
+            <div className="bg-slate-50 p-8 border-t border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-6 mt-auto"><p className="text-xs text-slate-500 max-w-xs">Compra recebida: histórico preservado para manter estoque e financeiro consistentes.</p><div className="text-center sm:text-right w-full sm:w-auto"><p className="font-black text-slate-400 text-[10px] uppercase tracking-widest mb-1">Total do Vale</p><p className="text-4xl font-black text-slate-900 font-mono tracking-tight">R$ {compraModal.valorTotal.toFixed(2)}</p></div></div>
           </div>
         </div>
       )}
