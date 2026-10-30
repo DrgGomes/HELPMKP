@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { supabase } from '../supabase';
 import type { Produto, Plataforma, LancamentoFinanceiro, CategoriaDespesa } from '../types';
 
 interface DashboardProps {
@@ -9,18 +10,68 @@ interface DashboardProps {
   setTelaAtiva: (tela: string) => void;
 }
 
+export function resumirDashboard(
+  contas: LancamentoFinanceiro[],
+  pagamentos: { lancamento_id: string; valor: number; data_pagamento: string }[],
+  hoje: string, mes: number, ano: number
+) {
+  const pagoPorConta: Record<string, number> = {};
+  let entradas = 0, saidas = 0, entradasMes = 0, saidasMes = 0;
+  const mapa = new Map(contas.map(c => [c.id, c]));
+  for (const p of pagamentos) {
+    const conta = mapa.get(p.lancamento_id);
+    if (!conta) continue;
+    const centavos = Math.round(p.valor * 100);
+    pagoPorConta[conta.id] = (pagoPorConta[conta.id] || 0) + centavos;
+    const [anoPagamento, mesPagamento] = p.data_pagamento.split('-').map(Number);
+    const noPeriodo = (!mes || mesPagamento === mes) && (!ano || anoPagamento === ano);
+    if (conta.tipo === 'receita') { entradas += centavos; if (noPeriodo) entradasMes += centavos; }
+    else { saidas += centavos; if (noPeriodo) saidasMes += centavos; }
+  }
+  const saldo = (l: LancamentoFinanceiro) => l.status === 'pago' ? 0 : Math.max(0, Math.round(l.valor * 100) - (pagoPorConta[l.id] || 0));
+  const pendentes = contas.filter(l => l.status === 'pendente');
+  return {
+    saldo: (entradas - saidas) / 100,
+    pagar: pendentes.filter(l => l.tipo === 'despesa').reduce((t,l) => t + saldo(l), 0) / 100,
+    receber: pendentes.filter(l => l.tipo === 'receita').reduce((t,l) => t + saldo(l), 0) / 100,
+    atrasadas: pendentes.filter(l => l.tipo === 'despesa' && l.dataVencimento < hoje).map(l => ({ ...l, valor: saldo(l) / 100 })),
+    entradasMes: entradasMes / 100, saidasMes: saidasMes / 100,
+  };
+}
+
 export default function Dashboard({ produtos, lancamentos, categoriasDespesa, setTelaAtiva }: DashboardProps) {
   const dataAtual = new Date();
   const [mesFiltro, setMesFiltro] = useState<number>(dataAtual.getMonth() + 1);
   const [anoFiltro, setAnoFiltro] = useState<number>(dataAtual.getFullYear());
 
-  // --- MOTOR DE DADOS CORE ---
-  const saldoGeralRealizado = lancamentos.filter(l => l.status === 'pago').reduce((acc, l) => acc + (l.tipo === 'receita' ? l.valor : -l.valor), 0);
-  
-  const faturasPagarAtrasadas = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pendente' && l.dataVencimento < dataAtual.toISOString().split('T')[0]);
-  
-  const contasAPagarGlobal = lancamentos.filter(l => l.tipo === 'despesa' && l.status === 'pendente').reduce((a, b) => a + b.valor, 0);
-  const contasAReceberGlobal = lancamentos.filter(l => l.tipo === 'receita' && l.status === 'pendente').reduce((a, b) => a + b.valor, 0);
+  const [pagamentos, setPagamentos] = useState<{ lancamento_id: string; valor: number; data_pagamento: string }[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erroDados, setErroDados] = useState('');
+  const [tentativa, setTentativa] = useState(0);
+  useEffect(() => {
+    let ativo = true;
+    const carregar = async () => {
+      setCarregando(true);
+      try {
+        const registros: typeof pagamentos = [];
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data, error } = await supabase.from('pagamentos').select('id, lancamento_id, valor, data_pagamento').order('id').range(inicio, inicio + 999);
+          if (error) throw error;
+          registros.push(...(data || []).map(p => ({ ...p, valor: Number(p.valor) })));
+          if (!data || data.length < 1000) break;
+        }
+        if (ativo) { setPagamentos(registros); setErroDados(''); }
+      } catch (e) { if (ativo) setErroDados(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao consultar pagamentos.'); }
+      finally { if (ativo) setCarregando(false); }
+    };
+    void carregar(); return () => { ativo = false; };
+  }, [lancamentos, tentativa]);
+  const hoje = `${dataAtual.getFullYear()}-${String(dataAtual.getMonth()+1).padStart(2,'0')}-${String(dataAtual.getDate()).padStart(2,'0')}`;
+  const resumo = useMemo(() => resumirDashboard(lancamentos, pagamentos, hoje, mesFiltro, anoFiltro), [lancamentos, pagamentos, hoje, mesFiltro, anoFiltro]);
+  const saldoGeralRealizado = resumo.saldo;
+  const faturasPagarAtrasadas = resumo.atrasadas;
+  const contasAPagarGlobal = resumo.pagar;
+  const contasAReceberGlobal = resumo.receber;
 
   const valorEstoque = produtos.reduce((acc, p) => acc + (p.custoBase * (p.estoque || 0)), 0);
   const totalItensEstoque = produtos.reduce((acc, p) => acc + (p.estoque || 0), 0);
@@ -35,7 +86,7 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
     } else if (contasAPagarGlobal > (saldoGeralRealizado + contasAReceberGlobal) && saldoGeralRealizado > 0) {
       alertas.push({ tipo: 'alerta', icone: '📉', titulo: 'Gargalo Financeiro Detectado', msg: 'Suas obrigações futuras superam seu saldo atual + recebíveis. Considere adiar compras de insumos nesta semana.', acao: 'Ver Contas', link: 'financeiro' });
     } else if (saldoGeralRealizado > (contasAPagarGlobal * 2)) {
-      alertas.push({ tipo: 'sucesso', icone: '🚀', titulo: 'Caixa Fortalecido', msg: 'Seu saldo líquido cobre 2x suas dívidas. Excelente momento para investir em tráfego pago ou novos moldes de calçados.', acao: 'Precificar Novos', link: 'calculadora' });
+      alertas.push({ tipo: 'sucesso', icone: '🚀', titulo: 'Caixa Fortalecido', msg: 'Seu saldo líquido cobre 2x suas dívidas. Consulte os pagamentos e compromissos antes de planejar novas compras.', acao: 'Precificar Novos', link: 'calculadora' });
     }
 
     // Análise 2: Estoque Inteligente
@@ -43,14 +94,14 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
     const produtosZerados = produtos.filter(p => (p.estoque || 0) === 0);
     
     if (produtosZerados.length > 0) {
-      alertas.push({ tipo: 'critico', icone: '📦', titulo: 'Ruptura de Estoque!', msg: `${produtosZerados.length} produtos chegaram a zero. Pause os anúncios no Mercado Livre imediatamente para não afetar sua reputação.`, acao: 'Ajustar Estoque', link: 'produtos_lista' });
+      alertas.push({ tipo: 'critico', icone: '📦', titulo: 'Ruptura de Estoque!', msg: `${produtosZerados.length} produtos chegaram a zero. Confira a disponibilidade antes de aceitar novas vendas.`, acao: 'Ajustar Estoque', link: 'produtos_lista' });
     } else if (produtosEstoqueBaixo.length > 0) {
       alertas.push({ tipo: 'alerta', icone: '⏳', titulo: 'Reposição Necessária', msg: `${produtosEstoqueBaixo.length} itens estão na zona vermelha de estoque mínimo. Acione seus fornecedores hoje.`, acao: 'Ver Insumos', link: 'fornecedores' });
     }
 
     // Se não tiver nada de errado, gera um insight positivo genérico
     if (alertas.length === 0) {
-      alertas.push({ tipo: 'info', icone: '🧠', titulo: 'IA Status: Operação Saudável', msg: 'Nenhum risco detectado no momento. Continue focando em escalar as vendas e cadastrar novos produtos no sistema.', acao: 'Criar Produto', link: 'produto_cadastro' });
+      alertas.push({ tipo: 'info', icone: '🧠', titulo: 'Resumo da operação', msg: 'Nenhum risco detectado no momento. Continue focando em escalar as vendas e cadastrar novos produtos no sistema.', acao: 'Criar Produto', link: 'produto_cadastro' });
     }
 
     return alertas;
@@ -76,8 +127,8 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
     });
   }, [lancamentos, mesFiltro, anoFiltro]);
 
-  const receitasMesPagas = lancamentosMes.filter(l => l.tipo === 'receita' && l.status === 'pago').reduce((a, b) => a + b.valor, 0);
-  const despesasMesPagas = lancamentosMes.filter(l => l.tipo === 'despesa' && l.status === 'pago').reduce((a, b) => a + b.valor, 0);
+  const receitasMesPagas = resumo.entradasMes;
+  const despesasMesPagas = resumo.saidasMes;
   const maxFinanceiro = Math.max(receitasMesPagas, despesasMesPagas) || 1;
 
   const despesasTotaisDoMes = lancamentosMes.filter(l => l.tipo === 'despesa');
@@ -105,10 +156,13 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
 
   const temGraficoParaExibir = dadosPizza.length > 0;
 
+  if (carregando || erroDados) return <div className="bg-white border border-slate-200 rounded-3xl p-8 shadow-sm"><h2 className="text-xl font-black text-slate-800">Resumo financeiro</h2><p role={erroDados ? 'alert' : undefined} className="text-slate-500 mt-3">{erroDados || 'Atualizando pagamentos e saldos...'}</p>{erroDados && <button onClick={() => setTentativa(t => t+1)} className="mt-4 bg-blue-600 text-white px-5 py-3 rounded-xl font-bold">Tentar novamente</button>}</div>;
+
   return (
     <div className="animate-fade-in space-y-8 pb-20">
       
       {/* CABEÇALHO 5.0 */}
+      <p className="text-xs text-slate-500 bg-white/70 border border-slate-200 rounded-xl px-4 py-3">Pagamentos parciais já são descontados dos saldos pendentes. Recebido e pago usam a data do pagamento; despesas previstas usam o vencimento. Quitações antigas sem histórico não entram na movimentação realizada.</p>
       <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
           <h2 className="text-4xl font-black text-slate-800 tracking-tight">Centro de Comando</h2>
@@ -116,7 +170,7 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
         </div>
         <div className="flex gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
           <select value={mesFiltro} onChange={(e) => setMesFiltro(Number(e.target.value))} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none transition-colors"><option value={0}>Panorama Global (Todos Meses)</option>{Array.from({ length: 12 }, (_, i) => (<option key={i+1} value={i+1}>{new Date(0, i).toLocaleString('pt-BR', { month: 'long' }).toUpperCase()}</option>))}</select>
-          <select value={anoFiltro} onChange={(e) => setAnoFiltro(Number(e.target.value))} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none transition-colors"><option value={0}>Todos Anos</option><option value={2025}>2025</option><option value={2026}>2026</option></select>
+          <select value={anoFiltro} onChange={(e) => setAnoFiltro(Number(e.target.value))} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none transition-colors"><option value={0}>Todos Anos</option>{Array.from(new Set([new Date().getFullYear()-1, new Date().getFullYear(), new Date().getFullYear()+1, ...lancamentos.map(l => Number(l.dataVencimento.slice(0,4)))])).sort((a,b) => a-b).map(ano => <option key={ano} value={ano}>{ano}</option>)}</select>
         </div>
       </header>
 
@@ -167,9 +221,9 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative overflow-hidden group">
           <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity text-5xl">🏦</div>
-          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Caixa Realizado</p>
+          <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2">Movimentação acumulada</p>
           <h3 className={`text-3xl font-black tracking-tight ${saldoGeralRealizado >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>R$ {saldoGeralRealizado.toFixed(2)}</h3>
-          <p className="text-xs font-bold text-slate-500 mt-2">Saldo líquido disponível hoje.</p>
+          <p className="text-xs font-bold text-slate-500 mt-2">Recebido menos pago no histórico, sem saldo inicial.</p>
         </div>
 
         <div onClick={() => setTelaAtiva('financeiro')} className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 cursor-pointer hover:border-rose-300 hover:shadow-lg transition-all group relative overflow-hidden">
@@ -207,7 +261,7 @@ export default function Dashboard({ produtos, lancamentos, categoriasDespesa, se
           <div className="space-y-8 flex-1 flex flex-col justify-center">
             <div>
               <div className="flex justify-between items-end mb-3">
-                <div><p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Receitas Validadas</p><p className="text-2xl font-black text-slate-800">R$ {receitasMesPagas.toFixed(2)}</p></div>
+                <div><p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest mb-1">Recebimentos registrados</p><p className="text-2xl font-black text-slate-800">R$ {receitasMesPagas.toFixed(2)}</p></div>
                 <span className="text-sm font-black text-emerald-500 bg-emerald-50 px-2 py-1 rounded-md">{((receitasMesPagas/maxFinanceiro)*100 || 0).toFixed(0)}%</span>
               </div>
               <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden shadow-inner">
