@@ -9,6 +9,33 @@ interface FinanceiroProps {
   categoriasDespesa: CategoriaDespesa[];
 }
 
+
+export function demonstrativoFornecedor(
+  fornecedor: { id: string; nome: string },
+  compras: Compra[],
+  contas: LancamentoFinanceiro[],
+  pagamentos: { lancamento_id: string; valor: number; data_pagamento: string }[]
+) {
+  const esc = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
+  const brl = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const data = (v: string) => esc(v ? v.slice(0, 10).split('-').reverse().join('/') : '—');
+  const pedidos = compras.filter(c => c.fornecedorId === fornecedor.id && c.statusChegada === 'recebido');
+  const faturas = contas.filter(l => l.fornecedorId === fornecedor.id && l.tipo === 'despesa').sort((a,b) => a.dataVencimento.localeCompare(b.dataVencimento));
+  const pago = (l: LancamentoFinanceiro) => l.status === 'pago' ? Math.round(l.valor * 100) : pagamentos.filter(p => p.lancamento_id === l.id).reduce((t,p) => t + Math.round(p.valor * 100), 0);
+  const total = faturas.reduce((t,l) => t + Math.round(l.valor * 100), 0);
+  const quitado = faturas.reduce((t,l) => t + pago(l), 0);
+  const detalhes = pedidos.map(c => `<section><h3>Compra ${esc(c.numeroVale || c.codigoOrdem)}</h3><p>Data: ${data(c.dataCompra)} · Total: ${brl(c.valorTotal)}</p><table><thead><tr><th>Produto</th><th>Quantidade</th><th>Valor unitário</th><th>Subtotal</th></tr></thead><tbody>${c.itens.map(i => `<tr><td>${esc(i.nome)}</td><td>${esc(i.quantidade)}</td><td>${brl(i.custoUnitario)}</td><td>${brl(i.subtotal)}</td></tr>`).join('')}</tbody></table></section>`).join('');
+  const linhas = faturas.map((l, i) => {
+    const compra = pedidos.find(c => c.id === l.compraId);
+    const referencia = compra ? `Compra ${compra.numeroVale || compra.codigoOrdem}` : `Conta avulsa ${i + 1}`;
+    const historico = pagamentos.filter(p => p.lancamento_id === l.id).sort((a,b) => a.data_pagamento.localeCompare(b.data_pagamento));
+    return `<tr><td>${esc(referencia)}</td><td>${data(l.dataVencimento)}</td><td>${brl(l.valor)}</td><td>${brl(pago(l)/100)}</td><td>${brl(Math.max(0, Math.round(l.valor*100)-pago(l))/100)}</td></tr>${historico.map(p => `<tr class="pagamento"><td colspan="5">Pagamento em ${data(p.data_pagamento)}: ${brl(p.valor)}</td></tr>`).join('')}${l.status === 'pago' && !historico.length ? '<tr class="pagamento"><td colspan="5">Quitação anterior sem histórico detalhado.</td></tr>' : ''}`;
+  }).join('');
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Demonstrativo do fornecedor</title><style>
+  body{font:14px Arial,sans-serif;color:#172033;max-width:960px;margin:36px auto;padding:0 24px}h1{font-size:28px;margin-bottom:8px}h2{font-size:20px}h3{font-size:16px}p{line-height:1.6;color:#526077}.resumo{display:flex;gap:24px;flex-wrap:wrap;background:#f1f5f9;padding:20px;border-radius:12px}.resumo strong{display:block;font-size:22px;color:#172033;margin-top:8px}table{border-collapse:collapse;width:100%;margin:12px 0 24px}th,td{border-bottom:1px solid #dbe2ea;padding:10px;text-align:left;overflow-wrap:anywhere}th{background:#f1f5f9;font-size:12px}tr{break-inside:avoid}.pagamento td{font-size:12px;color:#526077;background:#fafafa}button{background:#2459d3;color:white;border:0;padding:12px 18px;border-radius:8px;cursor:pointer}section{margin:24px 0}footer{border-top:1px solid #dbe2ea;margin-top:28px;padding-top:16px;font-size:12px;color:#64748b}@media print{button,.instrucoes{display:none}body{margin:0;max-width:none;padding:0}thead{display:table-header-group}@page{size:A4;margin:16mm}}
+  </style></head><body><button onclick="window.print()">Imprimir / Salvar PDF</button><p class="instrucoes">Confira o demonstrativo antes de compartilhar. Para gerar o arquivo, escolha “Salvar como PDF” na impressão.</p><h1>Demonstrativo de compras e pagamentos</h1><h2>${esc(fornecedor.nome)}</h2><p>Emitido em ${esc(new Date().toLocaleDateString('pt-BR'))} · Histórico disponível neste sistema, sem filtro de período.</p><div class="resumo"><div>Total das contas<strong>${brl(total/100)}</strong></div><div>Quitado<strong>${brl(quitado/100)}</strong></div><div>Saldo pendente<strong>${brl(Math.max(0,total-quitado)/100)}</strong></div></div><h2>Contas e pagamentos</h2><table><thead><tr><th>Referência</th><th>Vencimento</th><th>Valor</th><th>Quitado</th><th>Saldo</th></tr></thead><tbody>${linhas || '<tr><td colspan="5">Nenhuma conta vinculada.</td></tr>'}</tbody></table><h2>Detalhamento das compras recebidas</h2>${detalhes || '<p>Nenhuma compra recebida com itens disponíveis.</p>'}<footer>Documento para conferência. Não substitui nota fiscal nem comprovante bancário. Contas avulsas e compras sem fatura podem causar diferenças entre os totais das compras e das contas.</footer></body></html>`;
+}
+
 export default function Financeiro({ lancamentos, compras, fornecedores, categoriasDespesa }: FinanceiroProps) {
   const [abaAtiva, setAbaAtiva] = useState<'caixa' | 'fornecedores' | 'calendario'>('caixa');
   const [idEdicao, setIdEdicao] = useState<string | null>(null);
@@ -34,6 +61,8 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
   const [anoFiltro, setAnoFiltro] = useState<number>(anoAtual);
   const [statusFiltro, setStatusFiltro] = useState<'todos' | 'pendente' | 'pago'>('todos');
   const [tipoFiltro, setTipoFiltro] = useState<'todos' | 'receita' | 'despesa'>('todos');
+  const [fornecedorDivida, setFornecedorDivida] = useState('todos');
+  const [exportandoFornecedor, setExportandoFornecedor] = useState(false);
   const [fornecedorFiltro, setFornecedorFiltro] = useState('todos');
   const [categoriaFiltro, setCategoriaFiltro] = useState('todos');
   const [draftBusca, setDraftBusca] = useState('');
@@ -237,13 +266,6 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     }
   };
 
-  const adiarVencimento = async (id: string, dias: number, dataAtualStr: string) => {
-    const userId = await getUserId(); if (!userId) return;
-    const dataObj = new Date(dataAtualStr + 'T12:00:00'); dataObj.setDate(dataObj.getDate() + dias);
-    const { error } = await supabase.from('lancamentos').update({ data_vencimento: dataObj.toISOString().split('T')[0] }).eq('id', id).eq('user_id', userId);
-    if (error) { console.error(error); alert('Erro ao adiar vencimento.'); }
-  };
-
   const selecionarTodos = () => {
     if (selecionados.length === lancamentosFiltrados.length) setSelecionados([]);
     else setSelecionados(lancamentosFiltrados.map(l => l.id));
@@ -321,7 +343,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
-    if (fornecedorFiltro !== 'todos' && fornecedorFiltro !== '') listaBase = fornecedores.filter(f => f.id === fornecedorFiltro);
+    if (fornecedorDivida !== 'todos') listaBase = fornecedores.filter(f => f.id === fornecedorDivida);
     return listaBase.map(f => {
       const faturasPendentes = lancamentos.filter(l => l.fornecedorId === f.id && l.status === 'pendente' && l.tipo === 'despesa');
       const faturasOrdenadas = faturasPendentes.sort((a, b) => {
@@ -332,8 +354,53 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         return 0;
       });
       return { ...f, faturas: faturasOrdenadas, totalDevendo: faturasPendentes.reduce((a, b) => a + saldoDaConta(b), 0) };
-    }).filter(f => f.totalDevendo > 0).sort((a, b) => b.totalDevendo - a.totalDevendo);
-  }, [fornecedores, lancamentos, fornecedorFiltro, ordemFaturas, pagosPorConta]);
+    }).sort((a, b) => b.totalDevendo - a.totalDevendo);
+  }, [fornecedores, lancamentos, fornecedorDivida, ordemFaturas, pagosPorConta]);
+
+  const exportarFornecedor = async (fornecedor: Fornecedor) => {
+    if (exportandoFornecedor) return;
+    const janela = window.open('', '_blank');
+    if (!janela) { alert('Permita abrir uma nova janela para visualizar o demonstrativo.'); return; }
+    janela.opener = null;
+    janela.document.body.textContent = 'Preparando demonstrativo...';
+    setExportandoFornecedor(true);
+    try {
+      const { data: { user }, error: erroUsuario } = await supabase.auth.getUser();
+      if (erroUsuario || !user) throw new Error('Entre no sistema novamente.');
+      async function lerTabela(tabela: 'compras' | 'lancamentos') {
+        const registros: Record<string, any>[] = [];
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data, error } = await supabase.from(tabela).select('*')
+            .eq('user_id', user!.id).eq('fornecedor_id', fornecedor.id)
+            .order('id').range(inicio, inicio + 999);
+          if (error) throw error;
+          registros.push(...(data || []));
+          if (!data || data.length < 1000) return registros;
+        }
+      }
+      const [comprasDb, contasDb] = await Promise.all([lerTabela('compras'), lerTabela('lancamentos')]);
+      const pagamentosDb: { lancamento_id: string; valor: number; data_pagamento: string }[] = [];
+      const ids = contasDb.map(l => String(l.id));
+      for (let inicioIds = 0; inicioIds < ids.length; inicioIds += 100) {
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data, error } = await supabase.from('pagamentos')
+            .select('id, lancamento_id, valor, data_pagamento').eq('user_id', user.id)
+            .in('lancamento_id', ids.slice(inicioIds, inicioIds + 100))
+            .order('id').range(inicio, inicio + 999);
+          if (error) throw error;
+          pagamentosDb.push(...(data || []).map(p => ({ ...p, valor: Number(p.valor) })));
+          if (!data || data.length < 1000) break;
+        }
+      }
+      const pedidos = comprasDb.map(c => ({ id: c.id, fornecedorId: c.fornecedor_id, statusChegada: c.status_chegada, numeroVale: c.numero_vale, codigoOrdem: c.codigo_ordem, dataCompra: c.data_compra, valorTotal: Number(c.valor_total), itens: (c.itens || []).map((i: any) => ({ nome: i.nome, quantidade: i.quantidade, custoUnitario: Number(i.custoUnitario), subtotal: Number(i.subtotal) })) })) as Compra[];
+      const contas = contasDb.map(l => ({ id: l.id, fornecedorId: l.fornecedor_id, tipo: l.tipo, status: l.status, valor: Number(l.valor), dataVencimento: l.data_vencimento, compraId: l.compra_id })) as LancamentoFinanceiro[];
+      const html = demonstrativoFornecedor(fornecedor, pedidos, contas, pagamentosDb);
+      if (!janela.closed) { janela.document.open(); janela.document.write(html); janela.document.close(); }
+    } catch (e) {
+      janela.close();
+      alert(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Não foi possível gerar o demonstrativo.');
+    } finally { setExportandoFornecedor(false); }
+  };
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
@@ -426,35 +493,24 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           </div>
         </div>
       )}
-      <section className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 no-print">
-        <h3 className="text-xl font-bold">Movimentação realizada</h3>
-        <p className="text-sm text-slate-500">Valores registrados no histórico, pela data do pagamento ou recebimento. Usa os filtros de período, busca, categoria, fornecedor e tipo da aba Caixa. O filtro de status não altera este resumo. O saldo representa a diferença no período, sem saldo inicial.</p>
-        {carregandoMovimentos ? <p>Atualizando pagamentos...</p> : erroMovimentos ? <p role="alert" className="text-rose-600">{erroMovimentos}</p> : (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <p className="bg-emerald-50 rounded-xl p-4">Recebido<strong className="block text-2xl text-emerald-700">R$ {caixaRealizado.entradas.toFixed(2)}</strong></p>
-            <p className="bg-rose-50 rounded-xl p-4">Pago<strong className="block text-2xl text-rose-700">R$ {caixaRealizado.saidas.toFixed(2)}</strong></p>
-            <p className="bg-blue-50 rounded-xl p-4">Diferença no período<strong className="block text-2xl text-blue-700">R$ {caixaRealizado.saldo.toFixed(2)}</strong></p>
-          </div>
-        )}
-        <p className="text-xs text-slate-500">Contas quitadas pelo sistema antigo sem histórico não entram nestes valores. Calendário e relatório impresso continuam mostrando os valores integrais dos lançamentos por vencimento.</p>
-      </section>
+
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; background-color: white; } .no-print { display: none !important; } }`}} />
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
-          <h2 className="text-4xl font-black text-slate-800 tracking-tight">Terminal Financeiro</h2>
-          <p className="text-slate-500 font-medium mt-1">Gestão de liquidez e visibilidade avançada do seu caixa.</p>
+          <h2 className="text-4xl font-black text-slate-800 tracking-tight">Financeiro</h2>
+          <p className="text-slate-500 font-medium mt-1">Acompanhe suas contas, os pagamentos e os saldos por fornecedor.</p>
         </div>
         <div className="flex gap-3">
-          <button onClick={() => window.print()} className="px-6 py-3.5 rounded-2xl font-black flex items-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all duration-300 shadow-sm whitespace-nowrap">
-            <span className="text-lg">🖨️</span> Exportar PDF
-          </button>
-          <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm whitespace-nowrap ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
+          {abaAtiva === 'caixa' && <button onClick={() => window.print()} className="px-6 py-3.5 rounded-2xl font-black flex items-center gap-2 bg-slate-900 text-white hover:bg-slate-800 transition-all duration-300 shadow-sm whitespace-nowrap">
+            <span className="text-lg">🖨️</span> Relatório interno
+          </button>}
+          {abaAtiva === 'caixa' && <button onClick={() => setMostrarRelatorio(!mostrarRelatorio)} className={`px-6 py-3.5 rounded-2xl font-black flex items-center gap-3 border transition-all duration-300 shadow-sm whitespace-nowrap ${mostrarRelatorio ? 'bg-indigo-600 text-white border-indigo-500' : 'bg-white text-slate-700 border-slate-200 hover:border-indigo-300'}`}>
             <span className="text-lg">⚙️</span> {mostrarRelatorio ? 'Ocultar Filtros' : 'Filtros Avançados'}
-          </button>
+          </button>}
         </div>
       </header>
 
-      {mostrarRelatorio && (
+      {mostrarRelatorio && abaAtiva === 'caixa' && (
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-xl no-print animate-fade-in">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-8 gap-4 text-xs">
             <div className="lg:col-span-2"><label className="block font-black text-slate-400 uppercase tracking-widest mb-2">Busca Específica</label><input type="text" value={draftBusca} onChange={(e) => setDraftBusca(e.target.value)} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl font-bold outline-none focus:border-indigo-500" placeholder="Buscar palavra..." /></div>
@@ -472,16 +528,31 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       )}
 
       <div className="flex flex-wrap gap-2 border-b border-slate-200 pb-px no-print">
-        <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Terminal de Extrato</button>
-        <button onClick={() => setAbaAtiva('fornecedores')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'fornecedores' ? 'bg-rose-50 text-rose-600 border-t-2 border-rose-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Dívidas Fornecedor</button>
-        <button onClick={() => setAbaAtiva('calendario')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'calendario' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Calendário Operacional</button>
+        <button onClick={() => setAbaAtiva('caixa')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'caixa' ? 'bg-slate-900 text-emerald-400 border-t-2 border-emerald-500 shadow-[0_-4px_15px_rgba(52,211,153,0.1)]' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Contas e caixa</button>
+        <button onClick={() => setAbaAtiva('fornecedores')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'fornecedores' ? 'bg-rose-50 text-rose-600 border-t-2 border-rose-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Contas de fornecedores</button>
+        <button onClick={() => setAbaAtiva('calendario')} className={`px-6 py-4 font-black text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 ${abaAtiva === 'calendario' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}>Calendário</button>
       </div>
+
+      {abaAtiva === 'caixa' && (
+      <section className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 no-print">
+        <h3 className="text-xl font-bold">Movimentação realizada</h3>
+        <p className="text-sm text-slate-500">Valores registrados no histórico, pela data do pagamento ou recebimento. Usa os filtros de período, busca, categoria, fornecedor e tipo da aba Caixa. O filtro de status não altera este resumo. O saldo representa a diferença no período, sem saldo inicial.</p>
+        {carregandoMovimentos ? <p>Atualizando pagamentos...</p> : erroMovimentos ? <p role="alert" className="text-rose-600">{erroMovimentos}</p> : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <p className="bg-emerald-50 rounded-xl p-4">Recebido<strong className="block text-2xl text-emerald-700">R$ {caixaRealizado.entradas.toFixed(2)}</strong></p>
+            <p className="bg-rose-50 rounded-xl p-4">Pago<strong className="block text-2xl text-rose-700">R$ {caixaRealizado.saidas.toFixed(2)}</strong></p>
+            <p className="bg-blue-50 rounded-xl p-4">Diferença no período<strong className="block text-2xl text-blue-700">R$ {caixaRealizado.saldo.toFixed(2)}</strong></p>
+          </div>
+        )}
+        <p className="text-xs text-slate-500">Contas quitadas pelo sistema antigo sem histórico não entram nestes valores. Calendário e relatório impresso continuam mostrando os valores integrais dos lançamentos por vencimento.</p>
+      </section>
+      )}
 
       {abaAtiva === 'caixa' && (
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start animate-fade-in print:hidden">
           <div className="xl:col-span-4 bg-white p-8 rounded-3xl shadow-sm border border-slate-200 h-fit sticky top-24">
             <div className="flex justify-between items-center mb-6 border-b border-slate-100 pb-4">
-              <h3 className="font-black text-xl text-slate-800 tracking-tight">{idEdicao ? 'Revisão de Registro' : 'Injeção de Dados'}</h3>
+              <h3 className="font-black text-xl text-slate-800 tracking-tight">{idEdicao ? 'Editar conta' : 'Nova conta'}</h3>
 
             </div>
             <form onSubmit={lidarSalvar} className="space-y-5">
@@ -631,59 +702,21 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
       )}
 
       {abaAtiva === 'fornecedores' && (
-        <div className="space-y-6 animate-fade-in print:hidden pb-32">
-          {relatorioFornecedores.length > 0 && (
-            <div className="flex justify-end"><select value={ordemFaturas} onChange={(e) => setOrdemFaturas(e.target.value as any)} className="bg-white border border-slate-300 text-xs font-bold text-slate-700 rounded-xl px-4 py-3 shadow-sm outline-none"><option value="vencimento_asc">Organizar por Vencimento</option><option value="emissao_desc">Organizar por Emissão (Mais Recentes)</option><option value="valor_desc">Organizar por Valor (Maior primeiro)</option><option value="valor_asc">Organizar por Valor (Menor primeiro)</option></select></div>
-          )}
-          {relatorioFornecedores.length === 0 ? <div className="bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 font-bold text-slate-400">Nenhuma fatura de fornecedor vinculada.</div> : (
-            relatorioFornecedores.map(forn => (
-              <div key={forn.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
-                <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
-                  <div><h3 className="text-xl font-black">{forn.nome}</h3></div>
-                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Total Pendente</p><p className="text-3xl font-black text-rose-400 font-mono tracking-tight">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${forn.totalDevendo.toFixed(2)}`}</p></div>
-                </div>
-                <div className="p-4 bg-slate-50"><div className="space-y-3">
-                  {forn.faturas.map(fat => {
-                    const compData = compras.find(c => c.id === fat.compraId);
-                    const isAtrasado = fat.status === 'pendente' && fat.dataVencimento < new Date().toISOString().split('T')[0];
-                    return (
-                      <div key={fat.id} className="p-4 bg-white border border-slate-200 shadow-sm rounded-2xl flex flex-col md:flex-row justify-between items-center gap-4 hover:border-blue-300 transition-colors">
-                        <div className="w-full md:w-auto">
-                          <p className="font-bold text-slate-800 text-sm mb-2">{fat.descricao}</p>
-                          <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono font-black uppercase tracking-widest">
-                            <span className="bg-slate-100 text-slate-500 px-2.5 py-1 rounded-md border border-slate-200">Emit: {fat.dataLancamento ? fat.dataLancamento.split('-').reverse().join('/') : '---'}</span>
-                            <span className={`px-2.5 py-1 rounded-md border ${isAtrasado ? 'bg-rose-50 text-rose-600 border-rose-200 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>Venc: {fat.dataVencimento.split('-').reverse().join('/')}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-end">
-                          <span className={`font-black text-lg font-mono ${isAtrasado ? 'text-rose-600' : 'text-slate-700'}`}>{carregandoMovimentos ? 'Carregando...' : erroMovimentos ? 'Saldo indisponível' : `Saldo: R$ ${saldoDaConta(fat).toFixed(2)}`}</span>
-                          <div className="flex gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
-                            <button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+7 Dias</button>
-                            <button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+15 Dias</button>
-                          </div>
-                          <div className="flex border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                            <button onClick={() => iniciarEdicao(fat)} className="px-4 py-2.5 bg-slate-50 hover:bg-slate-100 text-slate-600 text-sm">✏️</button>
-                            <button onClick={() => excluirLancamento(fat)} className="px-4 py-2.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 text-sm border-l border-slate-200 transition-colors">✕</button>
-                          </div>
-                          {compData && <button onClick={() => setCompraModal(compData)} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md">📄 Ver Vale</button>}
-                          {!fat.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(fat)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Parcelar</button>}
-                          <button onClick={() => alternarStatus(fat)} className="px-5 py-2.5 bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-700 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors">Pagar</button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  </div></div>
-              </div>
-            ))
-          )}
-          {relatorioFornecedores.length > 0 && (
-            <div className="bg-rose-950 p-8 rounded-3xl shadow-xl border border-rose-900 text-white flex flex-col md:flex-row justify-between items-center gap-6 mt-8 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
-              <div className="relative z-10"><h3 className="text-xl font-black text-rose-300 uppercase tracking-widest mb-1">Risco Fornecedores</h3><p className="text-sm text-rose-400/80 font-medium">Soma de todas as faturas pendentes da fábrica.</p></div>
-              <div className="text-5xl font-black tracking-tight text-white bg-black/40 px-6 py-4 rounded-2xl border border-rose-500/30 relative z-10 font-mono shadow-[0_0_30px_rgba(225,29,72,0.2)]">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${TOTAL_GERAL_DEVIDO.toFixed(2)}`}</div>
+        <section className="space-y-5 no-print">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-xl font-bold">Contas de fornecedores</h3><p className="text-sm text-slate-500 mt-1">As mesmas despesas do caixa, agrupadas por fornecedor. Todos os vencimentos estão incluídos.</p></div><div><span className="text-sm text-slate-500">Saldo pendente da seleção</span><strong className="block text-2xl text-rose-600">{carregandoMovimentos ? 'Carregando...' : erroMovimentos ? 'Indisponível' : `R$ ${TOTAL_GERAL_DEVIDO.toFixed(2)}`}</strong></div></div>
+            <div className="flex flex-wrap gap-3"><label className="text-sm">Fornecedor<select value={fornecedorDivida} onChange={e => setFornecedorDivida(e.target.value)} className="block border rounded-lg p-3"><option value="todos">Todos os fornecedores</option>{fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}</select></label><label className="text-sm">Ordenar contas<select value={ordemFaturas} onChange={e => setOrdemFaturas(e.target.value as typeof ordemFaturas)} className="block border rounded-lg p-3"><option value="vencimento_asc">Vencimento mais próximo</option><option value="emissao_desc">Emissão mais recente</option><option value="valor_desc">Maior valor</option><option value="valor_asc">Menor valor</option></select></label></div>
+            <p className="text-xs text-slate-500">O demonstrativo abre para conferência antes de salvar em PDF. Inclui somente compras, contas e pagamentos do fornecedor escolhido; não inclui observações internas, lucro, preços de venda ou dados de outros fornecedores.</p>
+            {erroMovimentos && <p role="alert" className="text-rose-600">Não foi possível calcular os saldos: {erroMovimentos}</p>}
+          </div>
+          {relatorioFornecedores.length === 0 && <p className="bg-white border rounded-2xl p-8 text-slate-500">Nenhum fornecedor cadastrado nesta seleção.</p>}
+          {relatorioFornecedores.map(forn => (
+            <div key={forn.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+              <div className="p-5 flex flex-wrap items-center justify-between gap-4"><div><h3 className="text-lg font-bold">{forn.nome}</h3><p className="text-sm text-slate-500">{forn.faturas.length} conta(s) pendente(s)</p></div><div className="flex flex-wrap items-center gap-4"><strong className="text-xl text-rose-600">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${forn.totalDevendo.toFixed(2)}`}</strong><button disabled={exportandoFornecedor} onClick={() => exportarFornecedor(forn)} className="bg-blue-600 text-white rounded-lg px-4 py-3 font-bold text-sm disabled:opacity-50">{exportandoFornecedor ? 'Preparando...' : 'Demonstrativo para fornecedor'}</button></div></div>
+              <details className="border-t border-slate-100"><summary className="cursor-pointer px-5 py-4 font-semibold text-slate-600">Ver contas e registrar pagamentos</summary><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-50"><tr><th className="p-4">Conta</th><th className="p-4">Vencimento</th><th className="p-4">Valor original</th><th className="p-4">Saldo</th><th className="p-4">Ações</th></tr></thead><tbody>{forn.faturas.map(fat => <tr key={fat.id} className="border-t border-slate-100"><td className="p-4">{fat.descricao}</td><td className="p-4 whitespace-nowrap">{fat.dataVencimento.split('-').reverse().join('/')}</td><td className="p-4 whitespace-nowrap">R$ {fat.valor.toFixed(2)}</td><td className="p-4 font-bold whitespace-nowrap">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${saldoDaConta(fat).toFixed(2)}`}</td><td className="p-4"><div className="flex gap-2"><button onClick={() => alternarStatus(fat)} className="bg-emerald-50 text-emerald-700 px-3 py-2 rounded-lg font-bold">Pagar</button>{!fat.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(fat)} className="bg-blue-50 text-blue-700 px-3 py-2 rounded-lg">Parcelar</button>}<button onClick={() => iniciarEdicao(fat)} className="px-3 py-2 border rounded-lg">Editar</button>{compras.find(c => c.id === fat.compraId) && <button onClick={() => setCompraModal(compras.find(c => c.id === fat.compraId)!)} className="px-3 py-2 border rounded-lg whitespace-nowrap">Ver compra</button>}</div></td></tr>)}</tbody></table>{!forn.faturas.length && <p className="p-5 text-slate-500">Nenhuma conta pendente. O demonstrativo continua disponível para consultar as compras e quitações.</p>}</div></details>
             </div>
-          )}
-        </div>
+          ))}
+        </section>
       )}
 
       {abaAtiva === 'calendario' && (
