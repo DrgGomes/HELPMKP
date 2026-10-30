@@ -122,6 +122,35 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setCategoria(''); setFornSelecionado(''); setIsRecorrente(false); setMesesRepetir('12');
   };
 
+  const [contaParcelamento, setContaParcelamento] = useState<LancamentoFinanceiro | null>(null);
+  const [quantidadeParcelas, setQuantidadeParcelas] = useState('2');
+  const [primeiroVencimento, setPrimeiroVencimento] = useState('');
+  const [parcelando, setParcelando] = useState(false);
+  const [erroParcelamento, setErroParcelamento] = useState('');
+
+  const abrirParcelamento = (conta: LancamentoFinanceiro) => {
+    setContaParcelamento(conta); setQuantidadeParcelas('2');
+    setPrimeiroVencimento(conta.dataVencimento); setErroParcelamento('');
+  };
+
+  const salvarParcelamento = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!contaParcelamento || parcelando) return;
+    setParcelando(true); setErroParcelamento('');
+    try {
+      const { error } = await supabase.rpc('parcelar_lancamento', {
+        p_lancamento_id: contaParcelamento.id,
+        p_quantidade: Number(quantidadeParcelas),
+        p_primeiro_vencimento: primeiroVencimento,
+      });
+      if (error) throw error;
+      setContaParcelamento(null);
+      alert('Parcelas criadas. O total original foi preservado.');
+    } catch (e) {
+      setErroParcelamento(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao parcelar.');
+    } finally { setParcelando(false); }
+  };
+
   const [pagando, setPagando] = useState(false);
   const [contaPagamento, setContaPagamento] = useState<LancamentoFinanceiro | null>(null);
   const [historico, setHistorico] = useState<{ id: string; valor: number; data_pagamento: string; observacao: string | null }[]>([]);
@@ -362,6 +391,20 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
+      {contaParcelamento && (
+        <div className="fixed inset-0 bg-slate-950/80 z-[200] flex items-center justify-center p-4 no-print">
+          <form onSubmit={salvarParcelamento} role="dialog" aria-modal="true" aria-label="Parcelar conta" className="bg-white rounded-2xl p-6 w-full max-w-lg space-y-4">
+            <div className="flex justify-between"><h3 className="text-xl font-bold">Parcelar conta</h3><button type="button" disabled={parcelando} onClick={() => setContaParcelamento(null)}>Fechar</button></div>
+            <p>{contaParcelamento.descricao}</p>
+            <p className="font-bold">Total a dividir: R$ {contaParcelamento.valor.toFixed(2)}</p>
+            <label className="block">Quantidade de parcelas<input required type="number" min="2" max="60" step="1" value={quantidadeParcelas} onChange={e => setQuantidadeParcelas(e.target.value)} className="block w-full border rounded-lg p-3" /></label>
+            <label className="block">Primeiro vencimento<input required type="date" value={primeiroVencimento} onChange={e => setPrimeiroVencimento(e.target.value)} className="block w-full border rounded-lg p-3" /></label>
+            <p className="text-sm text-slate-500">As parcelas serão mensais, sem juros. Meses mais curtos usam o último dia disponível. Eventuais centavos são distribuídos nas primeiras parcelas. Somente contas sem pagamentos e sem série podem ser divididas.</p>
+            {erroParcelamento && <p role="alert" className="text-rose-600">{erroParcelamento}</p>}
+            <button disabled={parcelando} className="w-full bg-blue-600 text-white rounded-lg p-3 font-bold disabled:opacity-50">{parcelando ? 'Criando...' : 'Confirmar parcelamento'}</button>
+          </form>
+        </div>
+      )}
       {contaPagamento && (
         <div className="fixed inset-0 bg-slate-950/80 z-[200] flex items-center justify-center p-4 no-print">
           <div role="dialog" aria-modal="true" aria-label="Pagamentos da conta" className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4">
@@ -571,6 +614,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                               <button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className={`px-4 py-2 text-[10px] font-black uppercase font-mono rounded border transition-all disabled:opacity-30 ${lanc.status === 'pago' ? 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/50 hover:bg-emerald-500 hover:text-white shadow-[0_0_10px_rgba(52,211,153,0.1)]'}`}>
                                 {lanc.status === 'pago' ? 'Histórico' : 'Pagar / histórico'}
                               </button>
+                              {lanc.status === 'pendente' && !lanc.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(lanc)} disabled={modoSelecao} className="px-3 py-2 text-xs font-bold bg-blue-600 text-white rounded">Parcelar</button>}
                               <button onClick={() => iniciarEdicao(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✏️</button>
                               <button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-rose-500 hover:bg-rose-500 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✕</button>
                             </div>
@@ -622,6 +666,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                             <button onClick={() => excluirLancamento(fat)} className="px-4 py-2.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-500 text-sm border-l border-slate-200 transition-colors">✕</button>
                           </div>
                           {compData && <button onClick={() => setCompraModal(compData)} className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md">📄 Ver Vale</button>}
+                          {!fat.grupoRecorrenciaId && <button onClick={() => abrirParcelamento(fat)} className="px-4 py-2 bg-blue-600 text-white rounded-xl text-xs font-bold">Parcelar</button>}
                           <button onClick={() => alternarStatus(fat)} className="px-5 py-2.5 bg-emerald-100 hover:bg-emerald-500 hover:text-white text-emerald-700 rounded-xl text-xs font-black uppercase tracking-widest shadow-sm transition-colors">Pagar</button>
                         </div>
                       </div>
