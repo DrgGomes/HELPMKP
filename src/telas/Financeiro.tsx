@@ -122,10 +122,55 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setCategoria(''); setFornSelecionado(''); setIsRecorrente(false); setMesesRepetir('12');
   };
 
+  const [pagando, setPagando] = useState(false);
+  const [contaPagamento, setContaPagamento] = useState<LancamentoFinanceiro | null>(null);
+  const [historico, setHistorico] = useState<{ id: string; valor: number; data_pagamento: string; observacao: string | null }[]>([]);
+  const [valorPagamento, setValorPagamento] = useState('');
+  const [dataPagamento, setDataPagamento] = useState('');
+  const [observacaoPagamento, setObservacaoPagamento] = useState('');
+  const [pedidoPagamento, setPedidoPagamento] = useState('');
+  const [erroPagamento, setErroPagamento] = useState('');
+  const [abrindoPagamento, setAbrindoPagamento] = useState(false);
+
   const alternarStatus = async (lanc: LancamentoFinanceiro) => {
-    const userId = await getUserId(); if (!userId) return;
-    const { error } = await supabase.from('lancamentos').update({ status: lanc.status === 'pago' ? 'pendente' : 'pago' }).eq('id', lanc.id).eq('user_id', userId);
-    if (error) { console.error(error); alert('Erro ao atualizar status.'); }
+    if (abrindoPagamento) return;
+    setAbrindoPagamento(true);
+    try {
+      const { data, error } = await supabase.from('pagamentos')
+        .select('id, valor, data_pagamento, observacao')
+        .eq('lancamento_id', lanc.id).order('data_pagamento');
+      if (error) throw error;
+      const lista = (data || []).map(p => ({ ...p, valor: Number(p.valor) }));
+      const pago = lista.reduce((total, p) => total + p.valor, 0);
+      setHistorico(lista); setContaPagamento(lanc);
+      setValorPagamento(Math.max(0, lanc.valor - pago).toFixed(2));
+      const hoje = new Date();
+      setDataPagamento(`${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`);
+      setObservacaoPagamento(''); setErroPagamento('');
+      setPedidoPagamento(crypto.randomUUID());
+    } catch (e) {
+      alert(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao consultar pagamentos.');
+    } finally { setAbrindoPagamento(false); }
+  };
+
+  const salvarPagamento = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!contaPagamento || pagando) return;
+    setPagando(true); setErroPagamento('');
+    try {
+      const { error } = await supabase.rpc('registrar_pagamento', {
+        p_lancamento_id: contaPagamento.id,
+        p_valor: Number(valorPagamento.replace(',', '.')),
+        p_data: dataPagamento,
+        p_observacao: observacaoPagamento,
+        p_pedido_id: pedidoPagamento,
+      });
+      if (error) throw error;
+      setContaPagamento(null);
+      alert('Pagamento registrado. Consulte o histórico no botão da conta.');
+    } catch (e) {
+      setErroPagamento(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao registrar pagamento.');
+    } finally { setPagando(false); }
   };
 
   const excluirLancamento = async (lanc: LancamentoFinanceiro) => {
@@ -263,6 +308,27 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
 
   return (
     <div className="animate-fade-in max-w-[1600px] mx-auto space-y-8 pb-32">
+      {contaPagamento && (
+        <div className="fixed inset-0 bg-slate-950/80 z-[200] flex items-center justify-center p-4 no-print">
+          <div role="dialog" aria-modal="true" aria-label="Pagamentos da conta" className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto space-y-4">
+            <div className="flex justify-between gap-4"><h3 className="text-xl font-bold">Pagamentos da conta</h3><button disabled={pagando} onClick={() => setContaPagamento(null)}>Fechar</button></div>
+            <p className="font-semibold">{contaPagamento.descricao}</p>
+            <p>Total: R$ {contaPagamento.valor.toFixed(2)} · Registrado: R$ {historico.reduce((t, p) => t + p.valor, 0).toFixed(2)}</p>
+            <p className="font-bold text-blue-700">Saldo: R$ {Math.max(0, contaPagamento.valor - historico.reduce((t, p) => t + p.valor, 0)).toFixed(2)}</p>
+            {historico.map(p => <div key={p.id} className="border rounded-lg p-3 text-sm"><strong>R$ {p.valor.toFixed(2)}</strong> — {p.data_pagamento.split('-').reverse().join('/')}<p>{p.observacao}</p></div>)}
+            {contaPagamento.status === 'pago' && historico.length === 0 && <p>Conta quitada pelo sistema anterior, sem histórico detalhado de pagamentos.</p>}
+            {contaPagamento.status !== 'pago' && (
+              <form onSubmit={salvarPagamento} className="space-y-3">
+                <label className="block">Valor pago<input required type="number" min="0.01" step="0.01" value={valorPagamento} onChange={e => setValorPagamento(e.target.value)} className="block w-full border rounded-lg p-3" /></label>
+                <label className="block">Data do pagamento<input required type="date" value={dataPagamento} onChange={e => setDataPagamento(e.target.value)} className="block w-full border rounded-lg p-3" /></label>
+                <label className="block">Observação<input maxLength={500} value={observacaoPagamento} onChange={e => setObservacaoPagamento(e.target.value)} className="block w-full border rounded-lg p-3" /></label>
+                {erroPagamento && <p role="alert" className="text-rose-600">{erroPagamento}</p>}
+                <button disabled={pagando} className="w-full bg-blue-600 text-white rounded-lg p-3 font-bold disabled:opacity-50">{pagando ? 'Salvando...' : 'Confirmar pagamento'}</button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; background-color: white; } .no-print { display: none !important; } }`}} />
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
@@ -437,7 +503,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                             </span>
                             <div className="flex items-center gap-2">
                               <button onClick={() => alternarStatus(lanc)} disabled={modoSelecao} className={`px-4 py-2 text-[10px] font-black uppercase font-mono rounded border transition-all disabled:opacity-30 ${lanc.status === 'pago' ? 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700' : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/50 hover:bg-emerald-500 hover:text-white shadow-[0_0_10px_rgba(52,211,153,0.1)]'}`}>
-                                {lanc.status === 'pago' ? 'Desfazer' : 'Pagar'}
+                                {lanc.status === 'pago' ? 'Histórico' : 'Pagar / histórico'}
                               </button>
                               <button onClick={() => iniciarEdicao(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-slate-400 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✏️</button>
                               <button onClick={() => excluirLancamento(lanc)} disabled={modoSelecao} className="w-8 h-8 flex items-center justify-center bg-slate-800 text-rose-500 hover:bg-rose-500 hover:text-white rounded border border-slate-700 transition-colors disabled:opacity-30">✕</button>
