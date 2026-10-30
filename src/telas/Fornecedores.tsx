@@ -1,9 +1,14 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { supabase } from '../supabase';
 import type { Fornecedor, Produto, Compra, ItemCompra } from '../types';
 
 export default function Fornecedores({ fornecedores, produtos, compras }: { fornecedores: Fornecedor[], produtos: Produto[], compras: Compra[] }) {
+  const travaOrdem = useRef(false);
+  const codigoTentativa = useRef<string | null>(null);
+  const [salvandoFornecedor, setSalvandoFornecedor] = useState(false);
+  const travaFornecedor = useRef(false);
+  const [buscaFornecedor, setBuscaFornecedor] = useState('');
   const [abaAtiva, setAbaAtiva] = useState<'gerar' | 'receber' | 'lista'>('receber');
   const [fornecedorSelecionado, setFornecedorSelecionado] = useState('');
   const [dataEmissao, setDataEmissao] = useState(new Date().toISOString().split('T')[0]);
@@ -32,9 +37,14 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
     if (!produtoSelecionado || quantidadeDesejada <= 0 || !custoUnitario) return;
     const prod = produtos.find(p => p.id === produtoSelecionado);
     if (!prod) return;
-    const custo = parseFloat(custoUnitario);
-    const novoItem: ItemCompra = { produtoId: prod.id, nome: prod.titulo, quantidade: quantidadeDesejada, custoUnitario: custo, subtotal: quantidadeDesejada * custo };
-    setItensCarrinho([...itensCarrinho, novoItem]);
+    const custo = Number(custoUnitario.replace(',', '.'));
+    if (!Number.isInteger(quantidadeDesejada) || quantidadeDesejada <= 0 || !Number.isFinite(custo) || custo <= 0 || Math.abs(custo * 100 - Math.round(custo * 100)) > 0.00001) { alert('Use quantidade inteira positiva e custo positivo com até duas casas decimais.'); return; }
+    const novoItem: ItemCompra = { produtoId: prod.id, nome: prod.titulo, quantidade: quantidadeDesejada, custoUnitario: custo, subtotal: Math.round(quantidadeDesejada * custo * 100) / 100 };
+    setItensCarrinho(anteriores => {
+      const existente = anteriores.findIndex(i => i.produtoId === novoItem.produtoId && i.custoUnitario === custo);
+      if (existente < 0) return [...anteriores, novoItem];
+      return anteriores.map((i, indice) => indice === existente ? { ...i, quantidade: i.quantidade + novoItem.quantidade, subtotal: Math.round((i.quantidade + novoItem.quantidade) * custo * 100) / 100 } : i);
+    });
     setProdutoSelecionado(''); setQuantidadeDesejada(1); setCustoUnitario('');
   };
 
@@ -45,13 +55,18 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
   const valorTotalOrdem = itensCarrinho.reduce((acc, item) => acc + item.subtotal, 0);
 
   const finalizarOrdem = async () => {
+    if (travaOrdem.current) return;
+    if (!dataEmissao || !dataVencimento) { alert('Informe emissão e vencimento.'); return; }
     if (!fornecedorSelecionado || itensCarrinho.length === 0) return alert("Selecione um fornecedor e adicione itens.");
     const userId = await getUserId(); if (!userId) return;
     const forn = fornecedores.find(f => f.id === fornecedorSelecionado);
     if (!forn) return;
+    if (travaOrdem.current) return;
+    travaOrdem.current = true;
     setProcessandoOrdem(true);
     try {
-      const codigoGerado = `ORD-${Date.now()}`;
+      const codigoGerado = codigoTentativa.current || `ORD-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+      codigoTentativa.current = codigoGerado;
       const { error } = await supabase.from('compras').insert({
         user_id: userId,
         codigo_ordem: codigoGerado,
@@ -71,10 +86,12 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
       setItensCarrinho([]); setFornecedorSelecionado(''); setNumeroVale('');
       setDataEmissao(new Date().toISOString().split('T')[0]);
       setDataVencimento(new Date().toISOString().split('T')[0]);
+      codigoTentativa.current = null;
       setAbaAtiva('receber');
     } catch (e) {
       console.error(e); alert("Falha ao gerar ordem.");
     }
+    travaOrdem.current = false;
     setProcessandoOrdem(false);
   };
 
@@ -145,9 +162,11 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
 
   const salvarFornecedor = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!nomeForn) return;
+    if (travaFornecedor.current || !nomeForn.trim()) return;
     const userId = await getUserId(); if (!userId) return;
-    const dados = { nome: nomeForn, contato: contatoForn, categoria_insumo: categoriaForn };
+    if (travaFornecedor.current) return;
+    travaFornecedor.current = true; setSalvandoFornecedor(true);
+    const dados = { nome: nomeForn.trim(), contato: contatoForn, categoria_insumo: categoriaForn };
     try {
       if (idFornecedorEdicao) {
         const { error } = await supabase.from('fornecedores').update(dados).eq('id', idFornecedorEdicao).eq('user_id', userId);
@@ -158,11 +177,17 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
       }
       setIdFornecedorEdicao(null); setNomeForn(''); setContatoForn(''); setCategoriaForn('');
     } catch (error) { console.error(error); alert('Erro ao salvar fornecedor.'); }
+    finally { travaFornecedor.current = false; setSalvandoFornecedor(false); }
   };
 
   const excluirFornecedor = async (id: string) => {
+    if (compras.some(c => c.fornecedorId === id)) { alert('Este fornecedor possui compras. Preserve o cadastro para manter o histórico.'); return; }
     const userId = await getUserId();
-    if (userId && window.confirm("Excluir?")) {
+    if (!userId) return;
+    const { data: contasVinculadas, error: erroConsulta } = await supabase.from('lancamentos').select('id').eq('user_id', userId).eq('fornecedor_id', id).limit(1);
+    if (erroConsulta) { alert('Não foi possível verificar as contas deste fornecedor.'); return; }
+    if (contasVinculadas?.length) { alert('Este fornecedor possui contas financeiras. Preserve o cadastro para manter o histórico.'); return; }
+    if (window.confirm("Excluir fornecedor sem compras nem contas vinculadas?")) {
       const { error } = await supabase.from('fornecedores').delete().eq('id', id).eq('user_id', userId);
       if (error) { console.error(error); alert('Erro ao excluir.'); }
     }
@@ -178,15 +203,15 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
       `}} />
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-6">
         <div>
-          <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3"><span>🚚</span> Cargas</h2>
-          <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">Triagem de portaria e ordens de fábrica.</p>
+          <h2 className="text-3xl sm:text-4xl font-black text-slate-800 tracking-tight flex items-center gap-3"><span>🚚</span> Compras e fornecedores</h2>
+          <p className="text-slate-500 font-medium mt-1 text-xs sm:text-sm">Cadastre fornecedores, organize compras e registre o recebimento.</p>
         </div>
       </header>
 
       <div className="flex overflow-x-auto scrollbar-hide gap-2 border-b border-slate-200 pb-px -mx-4 px-4 sm:mx-0 sm:px-0">
         <button onClick={() => setAbaAtiva('gerar')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'gerar' ? 'bg-slate-900 text-white border-t-2 border-slate-900 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}><span>🛒</span> Gerar Ordem</button>
         <button onClick={() => setAbaAtiva('receber')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'receber' ? 'bg-emerald-600 text-white border-t-2 border-emerald-500 shadow-md' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}><span>⚡</span> Bipar Carga</button>
-        <button onClick={() => setAbaAtiva('lista')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'lista' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}><span>📋</span> Fábricas</button>
+        <button onClick={() => setAbaAtiva('lista')} className={`whitespace-nowrap px-4 py-3 sm:px-6 sm:py-4 font-black text-[10px] sm:text-xs uppercase tracking-widest rounded-t-2xl transition-all duration-300 flex items-center gap-2 ${abaAtiva === 'lista' ? 'bg-indigo-50 text-indigo-600 border-t-2 border-indigo-500' : 'bg-white text-slate-400 hover:bg-slate-50 border-t-2 border-transparent'}`}><span>📋</span> Fornecedores</button>
       </div>
 
       {abaAtiva === 'gerar' && (
@@ -281,17 +306,18 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-fade-in">
           <div className="xl:col-span-1">
             <div className="bg-white p-5 sm:p-6 rounded-3xl shadow-sm border border-slate-200">
-              <h3 className="text-lg font-black text-slate-800 mb-5 pb-3 border-b border-slate-100">{idFornecedorEdicao ? 'Editar Fábrica' : 'Nova Fábrica'}</h3>
+              <h3 className="text-lg font-black text-slate-800 mb-5 pb-3 border-b border-slate-100">{idFornecedorEdicao ? 'Editar fornecedor' : 'Novo fornecedor'}</h3>
               <form onSubmit={salvarFornecedor} className="space-y-4">
                 <div><input type="text" required placeholder="Nome" value={nomeForn} onChange={(e) => setNomeForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
                 <div><input type="text" placeholder="Contato" value={contatoForn} onChange={(e) => setContatoForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
                 <div><input type="text" placeholder="Insumo Principal" value={categoriaForn} onChange={(e) => setCategoriaForn(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold outline-none" /></div>
-                <button type="submit" className="w-full py-3.5 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl">{idFornecedorEdicao ? 'Atualizar' : 'Cadastrar'}</button>
+                <button type="submit" disabled={salvandoFornecedor} className="disabled:opacity-50 w-full py-3.5 bg-slate-900 text-white font-black text-xs uppercase tracking-widest rounded-xl">{salvandoFornecedor ? 'Salvando...' : idFornecedorEdicao ? 'Atualizar' : 'Cadastrar'}</button>
               </form>
             </div>
           </div>
           <div className="xl:col-span-2 space-y-3">
-            {fornecedores.map(forn => (
+            <label className="block text-sm font-bold text-slate-600">Buscar fornecedor<input value={buscaFornecedor} onChange={e => setBuscaFornecedor(e.target.value)} placeholder="Nome do fornecedor..." className="block w-full bg-white border border-slate-200 rounded-xl p-3 mt-2" /></label>
+            {fornecedores.filter(f => f.nome.toLowerCase().includes(buscaFornecedor.trim().toLowerCase())).map(forn => (
               <div key={forn.id} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center">
                 <div className="pr-4"><h4 className="text-base font-black text-slate-800">{forn.nome}</h4><p className="text-[10px] sm:text-xs font-bold text-slate-500 mt-1">{forn.contato} • <span className="bg-slate-100 px-1.5 py-0.5 rounded uppercase font-black">{forn.categoriaInsumo || 'Geral'}</span></p></div>
                 <div className="flex gap-1 sm:gap-2">
