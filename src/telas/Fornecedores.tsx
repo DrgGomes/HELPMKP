@@ -91,39 +91,17 @@ export default function Fornecedores({ fornecedores, produtos, compras }: { forn
     if (!window.confirm(`Confirmar entrada no estoque da ordem ${compra.codigoOrdem} e lançar faturamento?`)) return;
     setProcessandoRecebimento(true);
     try {
-      // 1. Atualizar compra
-      const { error: errComp } = await supabase.from('compras').update({ status_chegada: 'recebido', fatura_gerada: true }).eq('id', compra.id).eq('user_id', userId);
-      if (errComp) throw errComp;
-
-      // 2. Atualizar estoque dos produtos
-      for (const item of compra.itens) {
-        const prodExistente = produtos.find(p => p.id === item.produtoId);
-        if (prodExistente) {
-          const novoEstoque = (prodExistente.estoque || 0) + item.quantidade;
-          const { error: errProd } = await supabase.from('produtos').update({ estoque: novoEstoque }).eq('id', prodExistente.id).eq('user_id', userId);
-          if (errProd) console.warn('Erro ao atualizar estoque do produto:', errProd.message);
-        }
-      }
-
-      // 3. Criar lançamento financeiro
-      const { error: errLanc } = await supabase.from('lancamentos').insert({
-        user_id: userId,
-        tipo: 'despesa',
-        descricao: `Fatura ${compra.numeroVale ? `(Vale: ${compra.numeroVale})` : compra.codigoOrdem} - ${compra.fornecedorNome}`,
-        valor: compra.valorTotal,
-        data_vencimento: compra.dataPagamento || compra.dataCompra || new Date().toISOString().split('T')[0],
-        data_lancamento: compra.dataCompra || new Date().toISOString().split('T')[0],
-        status: 'pendente',
-        categoria: 'Compras de Estoque',
-        fornecedor_id: compra.fornecedorId,
-        compra_id: compra.id,
+      const { error } = await supabase.rpc('receber_compra', {
+        p_compra_id: compra.id,
       });
-      if (errLanc) throw errLanc;
-
-      alert(`📦 Carga processada com sucesso no estoque e lançada no financeiro.`);
+      if (error) throw error;
+      alert('Compra recebida. Estoque e conta a pagar atualizados.');
       setCodigoBip('');
     } catch (e) {
-      console.error(e); alert("Erro ao processar recebimento.");
+      console.error(e);
+      alert(e instanceof Error ? e.message :
+        (e && typeof e === 'object' && 'message' in e
+          ? String(e.message) : 'Erro ao processar recebimento.'));
     }
     setProcessandoRecebimento(false);
   };
