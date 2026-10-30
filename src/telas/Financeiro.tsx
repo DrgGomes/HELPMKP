@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { supabase } from '../supabase';
 import type { LancamentoFinanceiro, Compra, Fornecedor, CategoriaDespesa } from '../types';
 
@@ -236,6 +236,60 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
     setProcessandoLote(false);
   };
 
+  const [movimentos, setMovimentos] = useState<{ id: string; lancamento_id: string; valor: number; data_pagamento: string }[]>([]);
+  const [erroMovimentos, setErroMovimentos] = useState('');
+  const [carregandoMovimentos, setCarregandoMovimentos] = useState(true);
+
+  useEffect(() => {
+    let ativo = true;
+    const carregar = async () => {
+      setCarregandoMovimentos(true);
+      try {
+        const itens: typeof movimentos = [];
+        for (let inicio = 0; ; inicio += 1000) {
+          const { data, error } = await supabase.from('pagamentos')
+            .select('id, lancamento_id, valor, data_pagamento')
+            .order('id').range(inicio, inicio + 999);
+          if (error) throw error;
+          itens.push(...(data || []).map(p => ({ ...p, valor: Number(p.valor) })));
+          if (!data || data.length < 1000) break;
+        }
+        if (ativo) { setMovimentos(itens); setErroMovimentos(''); }
+      } catch (e) {
+        if (ativo) setErroMovimentos(e && typeof e === 'object' && 'message' in e ? String(e.message) : 'Erro ao carregar pagamentos.');
+      } finally { if (ativo) setCarregandoMovimentos(false); }
+    };
+    void carregar();
+    return () => { ativo = false; };
+  }, [lancamentos, contaPagamento]);
+
+  const pagosPorConta = useMemo(() => {
+    const totais: Record<string, number> = {};
+    for (const p of movimentos) totais[p.lancamento_id] = (totais[p.lancamento_id] || 0) + Math.round(p.valor * 100);
+    return totais;
+  }, [movimentos]);
+
+  const saldoDaConta = (l: LancamentoFinanceiro) => l.status === 'pago' ? 0 :
+    Math.max(0, Math.round(l.valor * 100) - (pagosPorConta[l.id] || 0)) / 100;
+
+  const caixaRealizado = useMemo(() => {
+    let entradas = 0; let saidas = 0;
+    const contas = new Map(lancamentos.map(l => [l.id, l]));
+    for (const p of movimentos) {
+      const l = contas.get(p.lancamento_id);
+      if (!l) continue;
+      const [ano, mes] = p.data_pagamento.split('-').map(Number);
+      if ((mesFiltro && mes !== mesFiltro) || (anoFiltro && ano !== anoFiltro)) continue;
+      if (!l.descricao.toLowerCase().includes(buscaDescricao.toLowerCase())) continue;
+      if (categoriaFiltro !== 'todos' && l.categoria !== categoriaFiltro) continue;
+      if (fornecedorFiltro !== 'todos' && l.fornecedorId !== fornecedorFiltro) continue;
+      if (tipoFiltro !== 'todos' && l.tipo !== tipoFiltro) continue;
+      if (l.tipo === 'receita') entradas += Math.round(p.valor * 100);
+      else saidas += Math.round(p.valor * 100);
+    }
+    return { entradas: entradas / 100, saidas: saidas / 100, saldo: (entradas - saidas) / 100 };
+  }, [movimentos, lancamentos, mesFiltro, anoFiltro, buscaDescricao, categoriaFiltro, fornecedorFiltro, tipoFiltro]);
+
   const relatorioFornecedores = useMemo(() => {
     let listaBase = fornecedores;
     if (fornecedorFiltro !== 'todos' && fornecedorFiltro !== '') listaBase = fornecedores.filter(f => f.id === fornecedorFiltro);
@@ -248,9 +302,9 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
         if (ordemFaturas === 'valor_asc') return a.valor - b.valor;
         return 0;
       });
-      return { ...f, faturas: faturasOrdenadas, totalDevendo: faturasPendentes.reduce((a, b) => a + b.valor, 0) };
+      return { ...f, faturas: faturasOrdenadas, totalDevendo: faturasPendentes.reduce((a, b) => a + saldoDaConta(b), 0) };
     }).filter(f => f.totalDevendo > 0).sort((a, b) => b.totalDevendo - a.totalDevendo);
-  }, [fornecedores, lancamentos, fornecedorFiltro, ordemFaturas]);
+  }, [fornecedores, lancamentos, fornecedorFiltro, ordemFaturas, pagosPorConta]);
 
   const TOTAL_GERAL_DEVIDO = relatorioFornecedores.reduce((acc, forn) => acc + forn.totalDevendo, 0);
 
@@ -314,7 +368,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             <div className="flex justify-between gap-4"><h3 className="text-xl font-bold">Pagamentos da conta</h3><button disabled={pagando} onClick={() => setContaPagamento(null)}>Fechar</button></div>
             <p className="font-semibold">{contaPagamento.descricao}</p>
             <p>Total: R$ {contaPagamento.valor.toFixed(2)} · Registrado: R$ {historico.reduce((t, p) => t + p.valor, 0).toFixed(2)}</p>
-            <p className="font-bold text-blue-700">Saldo: R$ {Math.max(0, contaPagamento.valor - historico.reduce((t, p) => t + p.valor, 0)).toFixed(2)}</p>
+            <p className="font-bold text-blue-700">Saldo: R$ {(contaPagamento.status === 'pago' ? 0 : Math.max(0, contaPagamento.valor - historico.reduce((t, p) => t + p.valor, 0))).toFixed(2)}</p>
             {historico.map(p => <div key={p.id} className="border rounded-lg p-3 text-sm"><strong>R$ {p.valor.toFixed(2)}</strong> — {p.data_pagamento.split('-').reverse().join('/')}<p>{p.observacao}</p></div>)}
             {contaPagamento.status === 'pago' && historico.length === 0 && <p>Conta quitada pelo sistema anterior, sem histórico detalhado de pagamentos.</p>}
             {contaPagamento.status !== 'pago' && (
@@ -329,6 +383,18 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           </div>
         </div>
       )}
+      <section className="bg-white border border-slate-200 rounded-2xl p-6 space-y-3 no-print">
+        <h3 className="text-xl font-bold">Movimentação realizada</h3>
+        <p className="text-sm text-slate-500">Valores registrados no histórico, pela data do pagamento ou recebimento. Usa os filtros de período, busca, categoria, fornecedor e tipo da aba Caixa. O filtro de status não altera este resumo. O saldo representa a diferença no período, sem saldo inicial.</p>
+        {carregandoMovimentos ? <p>Atualizando pagamentos...</p> : erroMovimentos ? <p role="alert" className="text-rose-600">{erroMovimentos}</p> : (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <p className="bg-emerald-50 rounded-xl p-4">Recebido<strong className="block text-2xl text-emerald-700">R$ {caixaRealizado.entradas.toFixed(2)}</strong></p>
+            <p className="bg-rose-50 rounded-xl p-4">Pago<strong className="block text-2xl text-rose-700">R$ {caixaRealizado.saidas.toFixed(2)}</strong></p>
+            <p className="bg-blue-50 rounded-xl p-4">Diferença no período<strong className="block text-2xl text-blue-700">R$ {caixaRealizado.saldo.toFixed(2)}</strong></p>
+          </div>
+        )}
+        <p className="text-xs text-slate-500">Contas quitadas pelo sistema antigo sem histórico não entram nestes valores. Calendário e relatório impresso continuam mostrando os valores integrais dos lançamentos por vencimento.</p>
+      </section>
       <style dangerouslySetInnerHTML={{__html: `@media print { body * { visibility: hidden; } #relatorio-financeiro-pdf, #relatorio-financeiro-pdf * { visibility: visible; } #relatorio-financeiro-pdf { position: absolute; left: 0; top: 0; width: 100%; color: #000; padding: 20px; background-color: white; } .no-print { display: none !important; } }`}} />
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 no-print">
         <div>
@@ -419,17 +485,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             <div className="grid grid-cols-3 gap-4">
               <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">💰</div>
-                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Receitas Validadas</p>
+                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Receitas previstas</p>
                 <p className="text-2xl font-black text-white font-mono tracking-tight">R$ {resumoFiltrado.receitas.toFixed(2)}</p>
               </div>
               <div className="bg-slate-900 p-5 rounded-2xl shadow-xl border border-slate-800 flex flex-col justify-center relative overflow-hidden">
                 <div className="absolute top-0 right-0 p-2 opacity-5 text-4xl">📉</div>
-                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Saídas Processadas</p>
+                <p className="text-[10px] font-black text-rose-500 uppercase tracking-widest mb-1">Despesas previstas</p>
                 <p className="text-2xl font-black text-white font-mono tracking-tight">R$ {resumoFiltrado.despesas.toFixed(2)}</p>
               </div>
               <div className="bg-black p-5 rounded-2xl shadow-[0_0_20px_rgba(52,211,153,0.1)] border border-emerald-900/50 flex flex-col justify-center relative overflow-hidden group">
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/5 to-transparent pointer-events-none"></div>
-                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Saldo Líquido</p>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Resultado previsto</p>
                 <p className={`text-2xl font-black font-mono tracking-tight relative z-10 ${resumoFiltrado.saldo >= 0 ? 'text-emerald-400' : 'text-rose-500'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p>
               </div>
             </div>
@@ -530,7 +596,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
               <div key={forn.id} className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mb-6">
                 <div className="bg-slate-900 p-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 text-white">
                   <div><h3 className="text-xl font-black">{forn.nome}</h3></div>
-                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Total Pendente</p><p className="text-3xl font-black text-rose-400 font-mono tracking-tight">R$ {forn.totalDevendo.toFixed(2)}</p></div>
+                  <div className="text-right"><p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Total Pendente</p><p className="text-3xl font-black text-rose-400 font-mono tracking-tight">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${forn.totalDevendo.toFixed(2)}`}</p></div>
                 </div>
                 <div className="p-4 bg-slate-50"><div className="space-y-3">
                   {forn.faturas.map(fat => {
@@ -546,7 +612,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
                           </div>
                         </div>
                         <div className="flex flex-wrap md:flex-nowrap items-center gap-3 w-full md:w-auto justify-end">
-                          <span className={`font-black text-lg font-mono ${isAtrasado ? 'text-rose-600' : 'text-slate-700'}`}>R$ {fat.valor.toFixed(2)}</span>
+                          <span className={`font-black text-lg font-mono ${isAtrasado ? 'text-rose-600' : 'text-slate-700'}`}>{carregandoMovimentos ? 'Carregando...' : erroMovimentos ? 'Saldo indisponível' : `Saldo: R$ ${saldoDaConta(fat).toFixed(2)}`}</span>
                           <div className="flex gap-1 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
                             <button onClick={() => adiarVencimento(fat.id, 7, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+7 Dias</button>
                             <button onClick={() => adiarVencimento(fat.id, 15, fat.dataVencimento)} className="px-3 py-1.5 bg-white hover:bg-blue-50 text-[10px] font-black text-blue-600 rounded-lg shadow-sm uppercase">+15 Dias</button>
@@ -569,7 +635,7 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
             <div className="bg-rose-950 p-8 rounded-3xl shadow-xl border border-rose-900 text-white flex flex-col md:flex-row justify-between items-center gap-6 mt-8 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500/20 rounded-full blur-3xl pointer-events-none"></div>
               <div className="relative z-10"><h3 className="text-xl font-black text-rose-300 uppercase tracking-widest mb-1">Risco Fornecedores</h3><p className="text-sm text-rose-400/80 font-medium">Soma de todas as faturas pendentes da fábrica.</p></div>
-              <div className="text-5xl font-black tracking-tight text-white bg-black/40 px-6 py-4 rounded-2xl border border-rose-500/30 relative z-10 font-mono shadow-[0_0_30px_rgba(225,29,72,0.2)]">R$ {TOTAL_GERAL_DEVIDO.toFixed(2)}</div>
+              <div className="text-5xl font-black tracking-tight text-white bg-black/40 px-6 py-4 rounded-2xl border border-rose-500/30 relative z-10 font-mono shadow-[0_0_30px_rgba(225,29,72,0.2)]">{carregandoMovimentos ? '...' : erroMovimentos ? 'Indisponível' : `R$ ${TOTAL_GERAL_DEVIDO.toFixed(2)}`}</div>
             </div>
           )}
         </div>
@@ -624,17 +690,17 @@ export default function Financeiro({ lancamentos, compras, fornecedores, categor
           </div>
           <div className="flex gap-8">
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Receitas Validadas</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Receitas previstas</p>
               <p className="text-2xl font-black text-emerald-600 font-mono tracking-tight">R$ {resumoFiltrado.receitas.toFixed(2)}</p>
             </div>
             <div className="w-px bg-slate-200"></div>
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Saídas Processadas</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Despesas previstas</p>
               <p className="text-2xl font-black text-rose-600 font-mono tracking-tight">R$ {resumoFiltrado.despesas.toFixed(2)}</p>
             </div>
             <div className="w-px bg-slate-200"></div>
             <div className="text-right">
-              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Saldo Líquido</p>
+              <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Resultado previsto</p>
               <p className={`text-2xl font-black font-mono tracking-tight ${resumoFiltrado.saldo >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>R$ {resumoFiltrado.saldo.toFixed(2)}</p>
             </div>
           </div>
